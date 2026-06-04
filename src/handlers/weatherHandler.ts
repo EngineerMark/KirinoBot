@@ -13,13 +13,23 @@ const ENDPOINTS = {
     airPollution: "http://api.openweathermap.org/data/2.5/air_pollution?lat={lat}&lon={lon}&appid={apiKey}"
 }
 
+//store for 10 minutes (url, timestamp, data)
+const apiCache: Record<string, { timestamp: number, data: any }> = {};
+const apiCacheDuration = 10 * 60 * 1000; // 10 minutes in milliseconds
+
 export async function getLocation(query: string): Promise<Geo | null> {
     const url = ENDPOINTS.location
         .replace("{query}", encodeURIComponent(query))
         .replace("{apiKey}", config.openWeatherMapApiKey);
     try {
+        if(apiCache[url] && (Date.now() - apiCache[url].timestamp < apiCacheDuration)) {
+            return apiCache[url].data as Geo || null;
+        }
+
         const response = await axios.get(url);
-        return response.data[0] as Geo || null;
+        const data = response.data[0] as Geo || null;
+        apiCache[url] = { timestamp: Date.now(), data };
+        return data;
     } catch (error) {
         console.error("Error fetching location:", error);
         return null;
@@ -32,8 +42,14 @@ export async function getWeather(lat: number, lon: number): Promise<WeatherRespo
         .replace("{lon}", lon.toString())
         .replace("{apiKey}", config.openWeatherMapApiKey);
     try {
+        if(apiCache[url] && (Date.now() - apiCache[url].timestamp < apiCacheDuration)) {
+            return apiCache[url].data as WeatherResponse || null;
+        }
+
         const response = await axios.get(url);
-        return response.data as WeatherResponse || null;
+        const data = response.data as WeatherResponse || null;
+        apiCache[url] = { timestamp: Date.now(), data };
+        return data;
     }
     catch (error) {
         console.error("Error fetching weather:", error);
@@ -47,8 +63,13 @@ export async function getAirQuality(lat: number, lon: number): Promise<AirQualit
         .replace("{lon}", lon.toString())
         .replace("{apiKey}", config.openWeatherMapApiKey);
     try {
+        if(apiCache[url] && (Date.now() - apiCache[url].timestamp < apiCacheDuration)) {
+            return apiCache[url].data as AirQualityResponse || null;
+        }
         const response = await axios.get(url);
-        return response.data as AirQualityResponse || null;
+        const data = response.data as AirQualityResponse || null;
+        apiCache[url] = { timestamp: Date.now(), data };
+        return data;
     }
     catch (error) {
         console.error("Error fetching air quality:", error);

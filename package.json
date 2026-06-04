@@ -21,6 +21,7 @@
   "description": "",
   "dependencies": {
     "axios": "^1.16.1",
+    "country-code-emoji": "^2.3.0",
     "discord.js": "^14.26.4",
     "dotenv": "^17.4.2"
   },

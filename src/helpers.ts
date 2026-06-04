@@ -26,3 +26,8 @@ export function parseArgs(args: string[]) {
         flags
     };
 }
+
+export function formatNumber(num: number, decimals: number = 2): string {
+    //point is to convert for example 1.2442 to 1.24..
+    return num.toFixed(decimals);
+}

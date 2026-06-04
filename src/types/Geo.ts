@@ -5,3 +5,8 @@ export interface Geo {
     country: string;
     state: string;
 }
+
+export interface Coordinates {
+    lat: number;
+    lon: number;
+}

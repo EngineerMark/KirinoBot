@@ -1,6 +1,8 @@
 import {
     Client,
-    GatewayIntentBits
+    Events,
+    GatewayIntentBits,
+    Partials
 } from "discord.js";
 import { config } from "../config.js";
 import { commands } from "./handlers/commandHandler.js";
@@ -9,15 +11,20 @@ const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.DirectMessages
+    ],
+    partials: [
+        Partials.Channel,
+        Partials.Message
     ]
 });
 
-client.once("ready", () => {
+client.once(Events.ClientReady, () => {
     console.log(`Logged in as ${client.user?.tag}`);
 });
 
-client.on("messageCreate", async message => {
+client.on(Events.MessageCreate, async message => {
 
     if (message.author.bot) {
         return;

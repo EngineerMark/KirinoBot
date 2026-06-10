@@ -1,28 +1,67 @@
 import axios from "axios";
 import { config } from "../../config.js";
-import type { Geo } from "../types/Geo.js";
+import { Coords, type Geo } from "../types/Geo.js";
 import type { Weather, WeatherResponse, WeatherTemperature } from "../types/Weather.js";
 import { EmbedBuilder } from "discord.js";
 import flag from 'country-code-emoji';
 import { formatNumber } from "../helpers.js";
 import type { AirQualityResponse } from "../types/AirQuality.js";
+import type { LightningResponse, Strike } from "../types/Lightning.js";
 
 const ENDPOINTS = {
     location: "http://api.openweathermap.org/geo/1.0/direct?q={query}&limit=1&appid={apiKey}",
     weather: "https://api.openweathermap.org/data/3.0/onecall?lat={lat}&lon={lon}&units=metric&appid={apiKey}",
-    airPollution: "http://api.openweathermap.org/data/2.5/air_pollution?lat={lat}&lon={lon}&appid={apiKey}"
+    airPollution: "http://api.openweathermap.org/data/2.5/air_pollution?lat={lat}&lon={lon}&appid={apiKey}",
+    lightning: "https://maps.blitzortung.org/en/GEOjson/strikes_{index}.json"
 }
 
 //store for 10 minutes (url, timestamp, data)
 const apiCache: Record<string, { timestamp: number, data: any }> = {};
 const apiCacheDuration = 10 * 60 * 1000; // 10 minutes in milliseconds
 
+export async function getLightningData(): Promise<LightningResponse | null> {
+    try {
+        if (apiCache['lightning'] && (Date.now() - apiCache['lightning'].timestamp < apiCacheDuration)) {
+            return apiCache['lightning'].data as LightningResponse || null;
+        }
+
+        const aggregatedResponse: any[] = [];
+
+        for (let i = 0; i <= 8; i++) {
+            const index = i < 10 ? `0${i}` : i;
+            const response = await axios.get(ENDPOINTS.lightning.replace("{index}", index));
+            aggregatedResponse.push(...response.data);
+        }
+
+        //response is actually [{0:17,1:32,2:"2026-06-10 21:05:04.431810560"}]
+        const lightningResponse: LightningResponse = {
+            strikes: []
+        }
+
+        for (const strike of aggregatedResponse) {
+            lightningResponse.strikes.push({
+                coord: {
+                    lat: strike[1],
+                    lon: strike[0]
+                },
+                time: new Date(strike[2] + " UTC")
+            })
+        }
+
+        apiCache['lightning'] = { timestamp: Date.now(), data: lightningResponse };
+        return lightningResponse;
+    } catch (error) {
+        console.error("Error fetching lightning data:", error);
+        return null;
+    }
+}
+
 export async function getLocation(query: string): Promise<Geo | null> {
     const url = ENDPOINTS.location
         .replace("{query}", encodeURIComponent(query))
         .replace("{apiKey}", config.openWeatherMapApiKey);
     try {
-        if(apiCache[url] && (Date.now() - apiCache[url].timestamp < apiCacheDuration)) {
+        if (apiCache[url] && (Date.now() - apiCache[url].timestamp < apiCacheDuration)) {
             return apiCache[url].data as Geo || null;
         }
 
@@ -42,7 +81,7 @@ export async function getWeather(lat: number, lon: number): Promise<WeatherRespo
         .replace("{lon}", lon.toString())
         .replace("{apiKey}", config.openWeatherMapApiKey);
     try {
-        if(apiCache[url] && (Date.now() - apiCache[url].timestamp < apiCacheDuration)) {
+        if (apiCache[url] && (Date.now() - apiCache[url].timestamp < apiCacheDuration)) {
             return apiCache[url].data as WeatherResponse || null;
         }
 
@@ -63,7 +102,7 @@ export async function getAirQuality(lat: number, lon: number): Promise<AirQualit
         .replace("{lon}", lon.toString())
         .replace("{apiKey}", config.openWeatherMapApiKey);
     try {
-        if(apiCache[url] && (Date.now() - apiCache[url].timestamp < apiCacheDuration)) {
+        if (apiCache[url] && (Date.now() - apiCache[url].timestamp < apiCacheDuration)) {
             return apiCache[url].data as AirQualityResponse || null;
         }
         const response = await axios.get(url);
@@ -77,7 +116,7 @@ export async function getAirQuality(lat: number, lon: number): Promise<AirQualit
     }
 }
 
-export function getWeatherEmbed(location: Geo, weatherData: WeatherResponse, airQualityData: AirQualityResponse | null, responseMode?: string = "normal"): EmbedBuilder {
+export function getWeatherEmbed(location: Geo, weatherData: WeatherResponse, airQualityData: AirQualityResponse | null, lightningData: LightningResponse | null, responseMode?: string = "normal"): EmbedBuilder {
     const currentData = weatherData.current;
     if (!currentData) {
         throw new Error("No weather data available");
@@ -88,7 +127,7 @@ export function getWeatherEmbed(location: Geo, weatherData: WeatherResponse, air
 
     switch (responseMode) {
         case "normal":
-            embed = getWeatherEmbedNormal(embed, location, weatherData, airQualityData);
+            embed = getWeatherEmbedNormal(embed, location, weatherData, airQualityData, lightningData);
             break;
         case "alerts":
             embed = getWeatherEmbedAlerts(embed, location, weatherData, airQualityData);
@@ -104,7 +143,7 @@ export function getWeatherEmbed(location: Geo, weatherData: WeatherResponse, air
     return embed;
 }
 
-function getWeatherEmbedNormal(embed: EmbedBuilder, location: Geo, weatherData: WeatherResponse, airQualityData: AirQualityResponse | null): EmbedBuilder {
+function getWeatherEmbedNormal(embed: EmbedBuilder, location: Geo, weatherData: WeatherResponse, airQualityData: AirQualityResponse | null, lightningData: LightningResponse | null): EmbedBuilder {
     const currentData = weatherData.current;
     if (!currentData) {
         throw new Error("No weather data available");
@@ -115,6 +154,22 @@ function getWeatherEmbedNormal(embed: EmbedBuilder, location: Geo, weatherData: 
     embed.setThumbnail(`http://openweathermap.org/img/wn/${currentData.weather[0]!.icon}@2x.png`);
 
     const today = weatherData.daily ? weatherData.daily[0] : null;
+
+    let closestStrike: Strike | null = null;
+    let strikesInRadius: number = 0;
+    let closestStrikeDistance: number = Number.MAX_SAFE_INTEGER;
+    if (lightningData) {
+        for (const strike of lightningData.strikes) {
+            const distance = Coords.Distance(location, strike.coord);
+            if (distance < closestStrikeDistance || !closestStrike) {
+                closestStrikeDistance = distance;
+                closestStrike = strike;
+            }
+            if (distance < 100 && (Date.now() - strike.time.getTime()) < 60 * 60 * 1000) { // 100km radius and within last hour
+                strikesInRadius++;
+            }
+        }
+    }
 
     //visibility is capped at 10km, so convert to km and show as "10+ km" if it's at max
     //and the same for miles, capped at 6.2 miles
@@ -159,6 +214,16 @@ function getWeatherEmbedNormal(embed: EmbedBuilder, location: Geo, weatherData: 
         {
             name: "Visibility",
             value: `**${currentData.visibility >= 10000 ? "10+" : formatNumber(currentData.visibility / 1000, 1)} km** / **${currentData.visibility >= 10000 ? "6.2+" : formatNumber(currentData.visibility / 1609.344, 1)} miles**`,
+            inline: true
+        },
+        {
+            name: "Closest Lightning",//simply output the distance, even if its far away
+            value: `**${closestStrike ? formatNumber(closestStrikeDistance, 1) : "N/A"} km** / **${closestStrike ? formatNumber(closestStrikeDistance / 1.609344, 1) : "N/A"} miles**`,
+            inline: true
+        },
+        {
+            name: "Nearby Lightning Strikes",
+            value: `**${strikesInRadius}** recent strikes within **100km** / **62 miles**`,
             inline: true
         }
     )

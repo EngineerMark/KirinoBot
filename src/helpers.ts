@@ -5,7 +5,7 @@ export function parseArgs(args: string[]) {
     for (let i = 0; i < args.length; i++) {
         const arg = args[i];
 
-        if(!arg) continue;
+        if (!arg) continue;
 
         if (arg.startsWith("--")) {
             flags[arg.slice(2)] = true;
@@ -30,4 +30,12 @@ export function parseArgs(args: string[]) {
 export function formatNumber(num: number, decimals: number = 2): string {
     //point is to convert for example 1.2442 to 1.24..
     return num.toFixed(decimals);
+}
+
+export function deg2rad(deg: number): number {
+    return deg * (Math.PI / 180);
+}
+
+export function rad2deg(rad: number): number {
+    return rad * (180 / Math.PI);
 }

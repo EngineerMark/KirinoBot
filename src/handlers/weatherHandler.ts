@@ -1,12 +1,14 @@
 import axios from "axios";
 import { config } from "../../config.js";
 import { Coords, type Geo } from "../types/Geo.js";
-import type { Weather, WeatherResponse, WeatherTemperature } from "../types/Weather.js";
+import type { Weather, WeatherData, WeatherResponse, WeatherTemperature } from "../types/Weather.js";
 import { EmbedBuilder } from "discord.js";
 import flag from 'country-code-emoji';
 import { formatNumber } from "../helpers.js";
 import type { AirQualityResponse } from "../types/AirQuality.js";
 import type { LightningResponse, Strike } from "../types/Lightning.js";
+
+const WEATHER_FORECAST_DAYS = 7;
 
 const ENDPOINTS = {
     location: "http://api.openweathermap.org/geo/1.0/direct?q={query}&limit=1&appid={apiKey}",
@@ -281,17 +283,22 @@ function getWeatherEmbedForecast(embed: EmbedBuilder, location: Geo, weatherData
     embed.setTitle(`Weather Forecast for ${location.name} ${flag(location.country)}`);
 
     if (weatherData.daily && weatherData.daily.length > 0) {
-        for (let i = 0; i < Math.min(weatherData.daily.length, 5); i++) {
+        for (let i = 1; i <= Math.min(weatherData.daily.length - 1, WEATHER_FORECAST_DAYS); i++) {
             const dayData = weatherData.daily[i]!;
-            const date = new Date((dayData.dt + weatherData.timezone_offset) * 1000).toISOString().substr(0, 10);
+            const dateObject = new Date((dayData.dt + weatherData.timezone_offset) * 1000);
+            const date = dateObject.toISOString().substr(0, 10);
+            const dayOfWeek = dateObject.toLocaleDateString("en-US", { weekday: "long" });
             const weather = dayData.weather[0]!;
             embed.addFields({
-                name: `${date} - ${weather.description}`,
+                name: `${dayOfWeek} (${date}) - ${weather.description}`,
                 value: `Low: **${formatNumber((dayData.temp as WeatherTemperature)?.min, 1)}°C** / **${formatNumber(((dayData.temp as WeatherTemperature)?.min || 0) * 9 / 5 + 32, 1)}°F**, High: **${formatNumber((dayData.temp as WeatherTemperature)?.max, 1)}°C** / **${formatNumber(((dayData.temp as WeatherTemperature)?.max || 0) * 9 / 5 + 32, 1)}°F**\nPrecipitation Chance: **${formatNumber((dayData.pop || 0) * 100, 1)}%**`,
                 inline: false
             })
         }
     }
+
+    const chartUrl = getWeatherForecastChart(weatherData);
+    embed.setImage(chartUrl);
 
     return embed;
 }
@@ -362,4 +369,54 @@ export function getAlertEmoji(tag: string): string {
         default:
             return "⚠️";
     }
+}
+
+export function getWeatherForecastChart(weatherResponse: WeatherResponse): string {
+    const WEATHER_FORECAST_DAYS_EXTENDED = WEATHER_FORECAST_DAYS * 2;
+    const forecastEntries: WeatherData[] = weatherResponse!.daily!.slice(0, WEATHER_FORECAST_DAYS_EXTENDED);
+
+    const chartData = {
+        type: "line",
+        data: {
+            //use MM-DD format
+            labels: forecastEntries.map((entry) => `${new Date(entry.dt * 1000).getMonth() + 1}-${new Date(entry.dt * 1000).getDate()}`),
+            datasets: [
+                //min temp
+                {
+                    label: "Min",
+                    data: forecastEntries.map((entry) => (entry.temp as WeatherTemperature)?.min),
+                    borderColor: "rgba(75, 192, 192, 1)",
+                    backgroundColor: "rgba(0, 0, 0, 0.3)",
+                    fill: false
+                },
+                //max temp
+                {
+                    label: "Max",
+                    data: forecastEntries.map((entry) => (entry.temp as WeatherTemperature)?.max),
+                    borderColor: "rgba(255, 99, 132, 1)",
+                    backgroundColor: "rgba(0, 0, 0, 0.3)",
+                    fill: '-1' //fill area between min and max
+                }
+            ]
+        },
+        options: {
+            maintainAspectRatio: false,
+            spanGaps: false,
+            elements: {
+                line: {
+                    tension: 0.000001
+                }
+            },
+            plugins: {
+                filler: {
+                    propagate: false
+                },
+                legend: { labels: { color: "white" } }
+            }
+        }
+    };
+
+    const chartUrl = `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartData))}&height=150&backgroundColor=white`;
+
+    return chartUrl;
 }

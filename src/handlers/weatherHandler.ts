@@ -366,6 +366,8 @@ export function getAlertEmoji(tag: string): string {
             return "❄️";
         case "thunderstorm":
             return "⛈️";
+        case "tornado":
+            return "🌪️";
         default:
             return "⚠️";
     }

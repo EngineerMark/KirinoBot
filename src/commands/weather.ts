@@ -17,6 +17,7 @@ export const weatherCommand: Command = {
         const showAlerts = parsed.flags.alerts || false;
         const showForecast = parsed.flags.forecast || false;
         const showAirQuality = parsed.flags.airquality || false;
+        const showLightning = parsed.flags.lightning || false;
 
         if (!location) {
             await message.reply("Please provide a location.");
@@ -38,6 +39,7 @@ export const weatherCommand: Command = {
         if (showAlerts) { responseMode = "alerts"; }
         else if (showForecast) { responseMode = "forecast"; }
         else if (showAirQuality) { responseMode = "airquality"; }
+        else if (showLightning) { responseMode = "lightning"; }
 
         if (weather) {
             const embed: EmbedBuilder = getWeatherEmbed(locationData, weather, airQuality, lightning, responseMode);

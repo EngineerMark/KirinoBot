@@ -29,10 +29,15 @@ export async function getLightningData(): Promise<LightningResponse | null> {
 
         const aggregatedResponse: any[] = [];
 
-        for (let i = 0; i <= 8; i++) {
+        for (let i = 0; i <= 23; i++) {
             const index = i < 10 ? `0${i}` : i;
-            const response = await axios.get(ENDPOINTS.lightning.replace("{index}", index));
-            aggregatedResponse.push(...response.data);
+            try {
+                const response = await axios.get(ENDPOINTS.lightning.replace("{index}", index));
+                aggregatedResponse.push(...response.data);
+            } catch (error) {
+                console.error(`Error fetching lightning data for index ${index}:`, error);
+                continue; //skip this index and continue with the next one
+            }
         }
 
         //response is actually [{0:17,1:32,2:"2026-06-10 21:05:04.431810560"}]
@@ -139,6 +144,9 @@ export function getWeatherEmbed(location: Geo, weatherData: WeatherResponse, air
             break;
         case "airquality":
             embed = getWeatherEmbedAirQuality(embed, location, weatherData, airQualityData);
+            break;
+        case "lightning":
+            embed = getWeatherEmbedLightning(embed, location, weatherData, airQualityData, lightningData);
             break;
     }
 
@@ -332,6 +340,90 @@ function getWeatherEmbedAirQuality(embed: EmbedBuilder, location: Geo, weatherDa
     return embed;
 }
 
+const LIGHTNING_RANGES = [5, 10, 25, 50, 100]; //km, also to be represented in a "circle" graph
+const STRIKES_PER_MINUTE_BUCKETS = [15, 30, 60]; //buckets for strikes per minute in the last hour, also to be represented in a "bar" graph
+function getWeatherEmbedLightning(embed: EmbedBuilder, location: Geo, weatherData: WeatherResponse, airQualityData: AirQualityResponse | null, lightningData: LightningResponse | null): EmbedBuilder {
+    const currentData = weatherData.current;
+    if (!currentData) {
+        throw new Error("No weather data available");
+    }
+
+    embed.setTitle(`Lightning Activity near ${location.name} ${flag(location.country)}`);
+
+    if (lightningData) {
+        const strikeCounts = new Array(LIGHTNING_RANGES.length).fill(0);
+        let closestStrike: Strike | null = null;
+        let closestStrikeDistance: number = Number.MAX_SAFE_INTEGER;
+
+        for (const strike of lightningData.strikes) {
+            const distance = Coords.Distance(location, strike.coord);
+            if (distance < closestStrikeDistance || !closestStrike) {
+                closestStrikeDistance = distance;
+                closestStrike = strike;
+            }
+
+            for (let i = 0; i < LIGHTNING_RANGES.length; i++) {
+                if (distance <= LIGHTNING_RANGES[i]!) {
+                    strikeCounts[i]++;
+                    break;
+                }
+            }
+        }
+
+        let lightningInfo = "";
+        for (let i = 0; i < LIGHTNING_RANGES.length; i++) {
+            lightningInfo += `Within ${LIGHTNING_RANGES[i]} km: **${strikeCounts[i]}** strikes\n`;
+        }
+        embed.addFields({
+            name: "Lightning Activity",
+            value: lightningInfo,
+            inline: false
+        });
+
+        if (closestStrike) {
+            const strikeTime = `<t:${Math.floor(closestStrike.time.getTime() / 1000)}:R>`;
+            embed.addFields({
+                name: "Closest Strike",
+                value: `**${formatNumber(closestStrikeDistance, 1)} km** / **${formatNumber(closestStrikeDistance / 1.609344, 1)} miles** away, occurred ${strikeTime}`,
+                inline: false
+            });
+        }
+
+        const nearbyStrikes = lightningData.strikes.filter(strike => Coords.Distance(location, strike.coord) <= 100 && (Date.now() - strike.time.getTime()) < 60 * 60 * 1000);
+        // strikes per minute per bucket
+        const now = Date.now(); //maybe based on most recent strike (due to caching), but that could be incorrect as well
+        const strikesPerBuckets = new Array(STRIKES_PER_MINUTE_BUCKETS.length).fill(0);
+        for (const strike of nearbyStrikes) {
+            const minutesAgo = (now - strike.time.getTime()) / (60 * 1000);
+            for (let i = 0; i < STRIKES_PER_MINUTE_BUCKETS.length; i++) {
+                if (minutesAgo <= STRIKES_PER_MINUTE_BUCKETS[i]!) {
+                    strikesPerBuckets[i]++;
+                    break;
+                }
+            }
+        }
+
+        let strikesPerMinuteInfo = "";
+        for (let i = 0; i < STRIKES_PER_MINUTE_BUCKETS.length; i++) {
+            const totalStrikes = strikesPerBuckets[i];
+            const strikesPerMinute = totalStrikes / STRIKES_PER_MINUTE_BUCKETS[i]!;
+            strikesPerMinuteInfo += `In the last ${STRIKES_PER_MINUTE_BUCKETS[i]} minutes: **${formatNumber(strikesPerMinute, 0)}** strikes per minute\n`;
+        }
+        embed.addFields({
+            name: "Recent Lightning Activity",
+            value: strikesPerMinuteInfo,
+            inline: false
+        });
+
+        const chartUrl = getWeatherNearbyStrikesChart(lightningData, location);
+        embed.setImage(chartUrl);
+    } else {
+        embed.setDescription("No lightning data available.");
+    }
+
+    return embed;
+}
+
 export function getWindDirection(degrees: number): string {
     //Return compass direction based on degrees (to NNW detail)
     const directions = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
@@ -373,6 +465,107 @@ export function getAlertEmoji(tag: string): string {
         default:
             return "⚠️";
     }
+}
+
+const ROUND_TO_MINUTES = 10;
+const HOURS_TO_DISPLAY = 2;
+export function getWeatherNearbyStrikesChart(lightningData: LightningResponse, location: Geo): string {
+    //a line graph showing the number of strikes per 5 minutes in the last hour
+    //current time should be rounded up (so all should be rounded up to nearest xx:05, xx:10, xx:15, etc)
+    //(config using Chart.js, using quickchart.io)
+    const now = Date.now();
+    const strikesPerInterval: Record<number, number> = {};
+    const closestStrikeDistancePerInterval: Record<number, number> = {};
+
+    for (const strike of lightningData.strikes) {
+        const distance = Coords.Distance(location, strike.coord);
+        if (distance <= 100 && (now - strike.time.getTime()) < HOURS_TO_DISPLAY * 60 * 60 * 1000) { //within 100km and last 2 hours
+            const roundedTime = Math.ceil(strike.time.getTime() / (ROUND_TO_MINUTES * 60 * 1000)) * (ROUND_TO_MINUTES * 60 * 1000);
+            strikesPerInterval[roundedTime] = (strikesPerInterval[roundedTime] || 0) + 1;
+
+            closestStrikeDistancePerInterval[roundedTime] = Math.min(closestStrikeDistancePerInterval[roundedTime] || Infinity, distance);
+        }
+    }
+
+    const labels: string[] = [];
+    const dataStrikesPerInterval: number[] = [];
+    const dataClosestStrikeDistancePerInterval: (number | null)[] = [];
+
+    for (let i = HOURS_TO_DISPLAY * 60 / ROUND_TO_MINUTES; i >= 0; i--) {
+        const intervalTime = now - i * ROUND_TO_MINUTES * 60 * 1000;
+        const roundedIntervalTime = Math.ceil(intervalTime / (ROUND_TO_MINUTES * 60 * 1000)) * (ROUND_TO_MINUTES * 60 * 1000);
+        labels.push(new Date(roundedIntervalTime).toISOString().substr(11, 5));
+        dataStrikesPerInterval.push(strikesPerInterval[roundedIntervalTime] || 0);
+        //infinity should also be null, as it means no strikes in that interval
+        dataClosestStrikeDistancePerInterval.push(closestStrikeDistancePerInterval[roundedIntervalTime]! === Infinity ? null : closestStrikeDistancePerInterval[roundedIntervalTime]!);
+    }
+
+    const chartData = {
+        type: "line",
+        data: {
+            labels,
+            datasets: [
+                {
+                    label: "Strikes/5min",
+                    data: dataStrikesPerInterval,
+                    borderColor: "rgba(255, 99, 132, 1)",
+                    fill: false,
+                    yAxisID: "y"
+                },
+                {
+                    label: "Nearest (km)",
+                    data: dataClosestStrikeDistancePerInterval,
+                    borderColor: "rgba(54, 162, 235, 1)",
+                    fill: false,
+                    yAxisID: "y1"
+                }
+            ]
+        },
+        options: {
+            maintainAspectRatio: false,
+            spanGaps: true,
+            plugins: {
+                filler: {
+                    propagate: false
+                },
+            },
+            stacked: false,
+            scales: {
+                yAxes: [{
+                    id: "y",
+                    type: "linear",
+                    display: true,
+                    position: "left",
+                    ticks: {
+                        beginAtZero: true
+                    },
+                },
+                {
+                    id: "y1",
+                    type: "linear",
+                    display: true,
+                    position: "right",
+                    ticks: {
+                        beginAtZero: true,
+                        callback: '__CALLBACK_PLACEHOLDER__'
+                    },
+                    grid: {
+                        drawOnChartArea: false
+                    },
+                }]
+            }
+        }
+    };
+
+    //has to be done like this according to quickchart docs
+    const distanceCallback = (value: number) => {
+        return `${value}km`;
+    }
+
+    const chartDataString = JSON.stringify(chartData).replace('"__CALLBACK_PLACEHOLDER__"', distanceCallback.toString());
+
+    const chartUrl = `https://quickchart.io/chart?c=${encodeURIComponent(chartDataString)}&height=150&backgroundColor=white`;
+    return chartUrl;
 }
 
 export function getWeatherForecastChart(weatherResponse: WeatherResponse): string {

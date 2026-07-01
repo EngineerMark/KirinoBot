@@ -1,11 +1,12 @@
 import { EmbedBuilder, Message } from "discord.js";
 import type { Command } from "../types/Command.js";
 import { parseArgs } from "../helpers.js";
-import { getWeather, getLocation, getWeatherEmbed, getAirQuality, getLightningData } from "../handlers/weatherHandler.js";
+import { getWeather, getLocation, getWeatherEmbed, getAirQuality, getLightningData, getAirStability } from "../handlers/weatherHandler.js";
 import type { Geo } from "../types/Geo.js";
 import type { WeatherResponse } from "../types/Weather.js";
 import type { AirQualityResponse } from "../types/AirQuality.js";
 import type { LightningResponse } from "../types/Lightning.js";
+import type { AirStabilityResponse } from "../types/AirStability.js";
 
 export const weatherCommand: Command = {
     name: "weather",
@@ -34,6 +35,7 @@ export const weatherCommand: Command = {
         const weather: WeatherResponse | null = await getWeather(locationData.lat, locationData.lon);
         const airQuality: AirQualityResponse | null = await getAirQuality(locationData.lat, locationData.lon);
         const lightning: LightningResponse | null = await getLightningData();
+        const airStability: AirStabilityResponse | null = await getAirStability(locationData.lat, locationData.lon);
 
         let responseMode = "normal";
         if (showAlerts) { responseMode = "alerts"; }
@@ -42,7 +44,7 @@ export const weatherCommand: Command = {
         else if (showLightning) { responseMode = "lightning"; }
 
         if (weather) {
-            const embed: EmbedBuilder = getWeatherEmbed(locationData, weather, airQuality, lightning, responseMode);
+            const embed: EmbedBuilder = getWeatherEmbed(locationData, weather, airQuality, lightning, airStability, responseMode);
             await message.reply({ embeds: [embed] });
         } else {
             await message.reply(`Could not find weather information for '${location}'`);

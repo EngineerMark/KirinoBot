@@ -7,6 +7,7 @@ import flag from 'country-code-emoji';
 import { formatNumber } from "../helpers.js";
 import type { AirQualityResponse } from "../types/AirQuality.js";
 import type { LightningResponse, Strike } from "../types/Lightning.js";
+import type { AirStabilityResponse } from "../types/AirStability.js";
 
 const WEATHER_FORECAST_DAYS = 7;
 
@@ -14,7 +15,8 @@ const ENDPOINTS = {
     location: "http://api.openweathermap.org/geo/1.0/direct?q={query}&limit=1&appid={apiKey}",
     weather: "https://api.openweathermap.org/data/3.0/onecall?lat={lat}&lon={lon}&units=metric&appid={apiKey}",
     airPollution: "http://api.openweathermap.org/data/2.5/air_pollution?lat={lat}&lon={lon}&appid={apiKey}",
-    lightning: "https://maps.blitzortung.org/en/GEOjson/strikes_{index}.json"
+    lightning: "https://maps.blitzortung.org/en/GEOjson/strikes_{index}.json",
+    airStability: "https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=cape,convective_inhibition&forecast_days=1"
 }
 
 //store for 10 minutes (url, timestamp, data)
@@ -59,6 +61,25 @@ export async function getLightningData(): Promise<LightningResponse | null> {
         return lightningResponse;
     } catch (error) {
         console.error("Error fetching lightning data:", error);
+        return null;
+    }
+}
+
+export async function getAirStability(lat: number, lon: number): Promise<AirStabilityResponse | null> {
+    const url = ENDPOINTS.airStability
+        .replace("{lat}", lat.toString())
+        .replace("{lon}", lon.toString());
+    try {
+        if (apiCache[url] && (Date.now() - apiCache[url].timestamp < apiCacheDuration)) {
+            return apiCache[url].data as AirStabilityResponse || null;
+        }
+
+        const response = await axios.get(url);
+        const data = response.data as AirStabilityResponse || null;
+        apiCache[url] = { timestamp: Date.now(), data };
+        return data;
+    } catch (error) {
+        console.error("Error fetching air stability:", error);
         return null;
     }
 }
@@ -123,7 +144,7 @@ export async function getAirQuality(lat: number, lon: number): Promise<AirQualit
     }
 }
 
-export function getWeatherEmbed(location: Geo, weatherData: WeatherResponse, airQualityData: AirQualityResponse | null, lightningData: LightningResponse | null, responseMode?: string = "normal"): EmbedBuilder {
+export function getWeatherEmbed(location: Geo, weatherData: WeatherResponse, airQualityData: AirQualityResponse | null, lightningData: LightningResponse | null, airStabilityData: AirStabilityResponse | null, responseMode?: string = "normal"): EmbedBuilder {
     const currentData = weatherData.current;
     if (!currentData) {
         throw new Error("No weather data available");
@@ -146,7 +167,7 @@ export function getWeatherEmbed(location: Geo, weatherData: WeatherResponse, air
             embed = getWeatherEmbedAirQuality(embed, location, weatherData, airQualityData);
             break;
         case "lightning":
-            embed = getWeatherEmbedLightning(embed, location, weatherData, airQualityData, lightningData);
+            embed = getWeatherEmbedLightning(embed, location, weatherData, airQualityData, lightningData, airStabilityData);
             break;
     }
 
@@ -342,7 +363,7 @@ function getWeatherEmbedAirQuality(embed: EmbedBuilder, location: Geo, weatherDa
 
 const LIGHTNING_RANGES = [5, 10, 25, 50, 100]; //km, also to be represented in a "circle" graph
 const STRIKES_PER_MINUTE_BUCKETS = [15, 30, 60]; //buckets for strikes per minute in the last hour, also to be represented in a "bar" graph
-function getWeatherEmbedLightning(embed: EmbedBuilder, location: Geo, weatherData: WeatherResponse, airQualityData: AirQualityResponse | null, lightningData: LightningResponse | null): EmbedBuilder {
+function getWeatherEmbedLightning(embed: EmbedBuilder, location: Geo, weatherData: WeatherResponse, airQualityData: AirQualityResponse | null, lightningData: LightningResponse | null, airStabilityData: AirStabilityResponse | null): EmbedBuilder {
     const currentData = weatherData.current;
     if (!currentData) {
         throw new Error("No weather data available");
@@ -415,6 +436,23 @@ function getWeatherEmbedLightning(embed: EmbedBuilder, location: Geo, weatherDat
             inline: false
         });
 
+        const stabilityIndex = getCurrentAirstabilityIndex(airStabilityData) || -1;
+        const cape = airStabilityData?.hourly.cape?.[stabilityIndex] || -1;
+        
+        //get peak and lowest cape of the day (with time)
+        const peakCape = Math.max(...(airStabilityData?.hourly.cape || []));
+        const peakCapeIndex = airStabilityData?.hourly.cape?.indexOf(peakCape) || -1;
+        //use discord timestamp (x ago or in x time) for the  cape time
+        const peakCapeTime = peakCapeIndex >= 0 ? `<t:${Math.floor((new Date().setHours(0, 0, 0, 0) + peakCapeIndex * 60 * 60 * 1000) / 1000)}:R>` : "N/A";
+
+        const peakCapeStr = `Peak: ${peakCape >= 0 ? formatNumber(peakCape, 0) : "N/A"} J/kg (**${getCapeInstabilityLabel(peakCape >= 0 ? peakCape : null)}**) at ${peakCapeTime}`;
+        
+        embed.addFields({
+            name: "Air Stability",
+            value: `**${cape >= 0 ? formatNumber(cape, 0) : "N/A"} J/kg** - **${getCapeInstabilityLabel(cape >= 0 ? cape : null)}**\n${peakCapeStr}`,
+            inline: false
+        });
+
         const chartUrl = getWeatherNearbyStrikesChart(lightningData, location);
         embed.setImage(chartUrl);
     } else {
@@ -464,6 +502,50 @@ export function getAlertEmoji(tag: string): string {
             return "🌊";
         default:
             return "⚠️";
+    }
+}
+
+function getCurrentAirstabilityIndex(airStabilityData: AirStabilityResponse | null): number | null {
+    //get closest index of current time in airStabilityData.hourly.time and return the corresponding cape value
+    if (!airStabilityData) {
+        return null;
+    }
+
+    const timezone = airStabilityData.timezone;
+    const now = new Date();
+    const nowInTimezone = new Date(now.toLocaleString("en-US", { timeZone: timezone }));
+    const nowTimestamp = Math.floor(nowInTimezone.getTime() / 1000);
+
+    let closestIndex = 0;
+    let closestDiff = Infinity;
+
+    for (let i = 0; i < airStabilityData.hourly.time.length; i++) {
+        const time = new Date(airStabilityData.hourly.time[i]!);
+        const timeInTimezone = new Date(time.toLocaleString("en-US", { timeZone: timezone }));
+        const timestamp = Math.floor(timeInTimezone.getTime() / 1000);
+        const diff = Math.abs(timestamp - nowTimestamp);
+        if (diff < closestDiff) {
+            closestDiff = diff;
+            closestIndex = i;
+        }
+    }
+
+    return closestIndex;
+}
+
+function getCapeInstabilityLabel(cape: number | null): string {
+    if (cape === null) {
+        return "N/A";
+    } else if (cape < 500) {
+        return "Stable";
+    } else if (cape < 1000) {
+        return "Slightly Unstable";
+    } else if (cape < 2500) {
+        return "Moderately Unstable";
+    } else if (cape < 4000) {
+        return "Unstable";
+    } else {
+        return "Extremely Unstable";
     }
 }
 

@@ -15,6 +15,7 @@ export interface Coordinates {
 
 //static coordinate class with functions
 export class Coords {
+    //calculate distance between two coordinates in km
     static Distance(c1: Coordinates, c2: Coordinates): number {
         const R = 6371;
         const dLat = deg2rad(c2.lat - c1.lat);

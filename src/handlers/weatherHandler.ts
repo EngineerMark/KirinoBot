@@ -439,11 +439,18 @@ function getWeatherEmbedLightning(embed: EmbedBuilder, location: Geo, weatherDat
         const stabilityIndex = getCurrentAirstabilityIndex(airStabilityData) || -1;
         const cape = airStabilityData?.hourly.cape?.[stabilityIndex] || -1;
         
-        //get peak and lowest cape of the day (with time)
-        const peakCape = Math.max(...(airStabilityData?.hourly.cape || []));
-        const peakCapeIndex = airStabilityData?.hourly.cape?.indexOf(peakCape) || -1;
-        //use discord timestamp (x ago or in x time) for the  cape time
-        const peakCapeTime = peakCapeIndex >= 0 ? `<t:${Math.floor((new Date().setHours(0, 0, 0, 0) + peakCapeIndex * 60 * 60 * 1000) / 1000)}:R>` : "N/A";
+        let peakCape = -1;
+        let peakCapeTime = "N/A";
+
+        if (airStabilityData?.hourly.cape) {
+            for (let i = 0; i < airStabilityData.hourly.cape.length; i++) {
+                const currentCape = airStabilityData.hourly.cape[i]!;
+                if (currentCape > peakCape) {
+                    peakCape = currentCape;
+                    peakCapeTime = `<t:${Math.floor((new Date().setHours(0, 0, 0, 0) + i * 60 * 60 * 1000) / 1000)}:R>`;
+                }
+            }
+        }
 
         const peakCapeStr = `Peak: ${peakCape >= 0 ? formatNumber(peakCape, 0) : "N/A"} J/kg (**${getCapeInstabilityLabel(peakCape >= 0 ? peakCape : null)}**) at ${peakCapeTime}`;
         

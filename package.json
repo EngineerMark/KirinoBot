@@ -2,16 +2,15 @@
   "name": "kirinobot",
   "version": "1.0.0",
   "main": "index.js",
-  "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "start": "tsx src/index.ts"
+    "start": "node index.js",
+    "lint": "eslint . --ext .js",
+    "dev": "nodemon index.js"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/EngineerMark/KirinoBot.git"
   },
-  "keywords": [],
   "author": "",
   "license": "ISC",
   "bugs": {
@@ -20,16 +19,12 @@
   "homepage": "https://github.com/EngineerMark/KirinoBot#readme",
   "description": "",
   "dependencies": {
-    "axios": "^1.16.1",
     "country-code-emoji": "^2.3.0",
-    "discord.js": "^14.26.4",
+    "discord.js": "^14.27.0",
     "dotenv": "^17.4.2"
   },
   "devDependencies": {
-    "@types/node": "^25.9.1",
-    "nodemon": "^3.1.14",
-    "ts-node": "^10.9.2",
-    "tsx": "^4.22.4",
-    "typescript": "^6.0.3"
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.8.1"
   }
 }

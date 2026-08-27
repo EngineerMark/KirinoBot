@@ -1,22 +1,8 @@
-import { deg2rad } from "../helpers.js";
+const { deg2rad, rad2deg } = require('../services/helpers');
 
-export interface Geo {
-    name: string;
-    lat: number;
-    lon: number;
-    country: string;
-    state: string;
-}
-
-export interface Coordinates {
-    lat: number;
-    lon: number;
-}
-
-//static coordinate class with functions
-export class Coords {
+class Coords {
     //calculate distance between two coordinates in km
-    static Distance(c1: Coordinates, c2: Coordinates): number {
+    static Distance(c1, c2) {
         const R = 6371;
         const dLat = deg2rad(c2.lat - c1.lat);
         const dLon = deg2rad(c2.lon - c1.lon);
@@ -30,7 +16,7 @@ export class Coords {
         return R * c;
     }
 
-    static Bearing(c1: Coordinates, c2: Coordinates): number {
+    static Bearing(c1, c2) {
         const dLon = deg2rad(c2.lon - c1.lon);
         const y = Math.sin(dLon) * Math.cos(deg2rad(c2.lat));
         const x =
@@ -40,3 +26,5 @@ export class Coords {
         return (bearing * 180) / Math.PI;
     }
 }
+
+module.exports = Coords;

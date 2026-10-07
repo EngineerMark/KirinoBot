@@ -4,6 +4,9 @@ const { formatNumber } = require('./helpers');
 const { countryCodeEmoji } = require('country-code-emoji');
 const config = require('../config.json');
 const Coords = require('../types/Coords');
+
+const WEATHER_FORECAST_DAYS = 7;
+
 const ENDPOINTS = {
     location: "http://api.openweathermap.org/geo/1.0/direct?q={query}&limit=1&appid={apiKey}",
     weather: "https://api.openweathermap.org/data/3.0/onecall?lat={lat}&lon={lon}&units=metric&appid={apiKey}",

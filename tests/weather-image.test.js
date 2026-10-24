@@ -281,6 +281,7 @@ for (const output of [null, 'image', 'failure']) {
         t.mock.method(service, 'getLocation', async () => location);
         t.mock.method(service, 'getWeather', async () => weather);
         t.mock.method(service, 'getAirQuality', async () => null);
+        t.mock.method(service, 'getAirQualityForecast', async () => null);
         if (output === 'failure') {
             t.mock.method(require('../services/weather-image'), 'getWeatherImage', async () => { throw new Error('Render failed'); });
             t.mock.method(console, 'error', () => undefined);

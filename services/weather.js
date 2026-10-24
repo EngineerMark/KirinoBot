@@ -1,4 +1,4 @@
-const { locationResponse, weatherResponse, airQualityResponse, stabilityResponse, lightningResponse } = require('./weather-validation');
+const { locationResponse, weatherResponse, airQualityResponse, airQualityForecastResponse, stabilityResponse, lightningResponse } = require('./weather-validation');
 const { WeatherEmbedBuilder, truncate } = require('./weather-embed');
 const { daylightSummary, windSummary } = require('./weather-outlook-data');
 const { fetchWithCache } = require('./api');
@@ -13,6 +13,7 @@ const ENDPOINTS = {
     location: 'https://api.openweathermap.org/geo/1.0/direct?q={query}&limit=1&appid={apiKey}',
     weather: 'https://api.openweathermap.org/data/3.0/onecall?lat={lat}&lon={lon}&units=metric&appid={apiKey}',
     airPollution: 'https://api.openweathermap.org/data/2.5/air_pollution?lat={lat}&lon={lon}&appid={apiKey}',
+    airPollutionForecast: 'https://api.openweathermap.org/data/2.5/air_pollution/forecast?lat={lat}&lon={lon}&appid={apiKey}',
     lightning: 'https://maps.blitzortung.org/en/GEOjson/strikes_{index}.json',
     airStability: 'https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=cape,convective_inhibition&forecast_days=1&timezone=GMT',
 };
@@ -67,6 +68,14 @@ async function getAirQuality(lat, lon) {
         .replace('{apiKey}', process.env.OPENWEATHERMAP_API_KEY);
     const data = await fetchWithCache(url, 300000, airQualityResponse);
     return data;
+}
+
+async function getAirQualityForecast(lat, lon) {
+    const url = ENDPOINTS.airPollutionForecast
+        .replace('{lat}', lat.toString())
+        .replace('{lon}', lon.toString())
+        .replace('{apiKey}', process.env.OPENWEATHERMAP_API_KEY);
+    return fetchWithCache(url, 900000, airQualityForecastResponse);
 }
 
 function getWeatherEmbed(location, weatherData, airQualityData, lightningData, airStabilityData, responseMode = 'normal') {
@@ -668,5 +677,6 @@ module.exports = {
     getLightningData,
     getAirStability,
     getAirQuality,
+    getAirQualityForecast,
     getWeatherEmbed,
 };

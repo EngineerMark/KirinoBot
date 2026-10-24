@@ -182,6 +182,7 @@ for (const output of ['embed', 'image']) {
             return { current: {}, daily: [] };
         });
         t.mock.method(weatherService, 'getAirQuality', async () => null);
+        t.mock.method(weatherService, 'getAirQualityForecast', async () => null);
         t.mock.method(weatherService, 'getLightningData', async () => ({ strikes: [] }));
         t.mock.method(weatherService, 'getAirStability', async () => null);
         t.mock.method(require('../services/weather-image'), 'getWeatherImage', async (embed, mode) => {

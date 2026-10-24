@@ -1,4 +1,5 @@
 const { upcomingHours: hourlyTemperatures, nightRanges } = require('./weather-outlook-data');
+const { precipitationAmount, formatAmount } = require('./weather-precipitation');
 
 function drawHourly(weather, top) {
     const hours = hourlyTemperatures(weather);
@@ -12,10 +13,12 @@ function drawHourly(weather, top) {
     const y = value => 97 - (value - minimum) / (maximum - minimum) * 52;
     const validChance = value => Number.isFinite(value) && value >= 0 && value <= 1;
     const hasChance = hours.some(hour => validChance(hour.pop));
+    const hasAmount = hours.some(hour => Number.isFinite(precipitationAmount(hour)));
     const offset = Number.isFinite(weather.timezone_offset) ? weather.timezone_offset : 0;
     let svg = `<g transform="translate(0 ${top})"><rect x="24" width="672" height="136" rx="14" fill="#202e46"/>
 <text x="42" y="26" fill="#ffad9b" font-size="16" font-weight="600">Hourly temperature · °C${Number.isFinite(weather.timezone_offset) ? '' : ' · UTC'}</text>
 ${hasChance ? '<rect x="370" y="16" width="10" height="11" rx="2" fill="#8cd9ee" opacity="0.65"/><text x="388" y="26" fill="#8cd9ee" font-size="12">Precip. chance</text>' : ''}
+${hasAmount && !hasChance ? '<text x="370" y="26" fill="#8cd9ee" font-size="12">Precip. amount · mm/h</text>' : ''}
 <text x="650" y="26" text-anchor="end" fill="#ffad9b" font-size="13">${Number(Math.min(...values).toFixed(1))}° – ${Number(Math.max(...values).toFixed(1))}°</text>`;
     for (const [from, to] of nightRanges(weather, start, end)) {
         svg += `<rect data-series="night" x="${x(from)}" y="45" width="${x(to) - x(from)}" height="52" fill="#0a1320" opacity="0.55"/>`;
@@ -53,6 +56,14 @@ ${hasChance ? '<rect x="370" y="16" width="10" height="11" rx="2" fill="#8cd9ee"
         else { flush(); }
     });
     flush();
+    if (hasAmount) {
+        svg += '<text x="42" y="114" fill="#8cd9ee" font-size="10">mm/h</text>';
+        hours.forEach(hour => {
+            const amount = precipitationAmount(hour);
+            const label = formatAmount(amount).replace('<', '&lt;');
+            svg += `<text data-series="precipitation-amount" x="${x(hour.dt)}" y="112" text-anchor="middle" fill="${Number.isFinite(amount) ? '#8cd9ee' : '#a9bad1'}" font-size="10">${label}</text>`;
+        });
+    }
     const labelIndices = [0];
     for (let index = 1; index < hours.length - 1; index++) {
         if (x(hours[index].dt) - x(hours[labelIndices[labelIndices.length - 1]].dt) >= 90 && x(end) - x(hours[index].dt) >= 90) labelIndices.push(index);
@@ -61,10 +72,10 @@ ${hasChance ? '<rect x="370" y="16" width="10" height="11" rx="2" fill="#8cd9ee"
     labelIndices.forEach(index => {
         const hour = hours[index];
         const label = new Date((hour.dt + offset) * 1000).toISOString().slice(11, 16);
-        svg += `<text x="${x(hour.dt)}" y="122" text-anchor="middle" fill="#a9bad1" font-size="12">${label}</text>`;
+        svg += `<text x="${x(hour.dt)}" y="${hasAmount ? 128 : 122}" text-anchor="middle" fill="#a9bad1" font-size="12">${label}</text>`;
     });
     svg += '</g>';
-    return { svg, height: 146, summary: `Hourly temperatures${hasChance ? ' and precipitation chance' : ''}: ${hours.map(hour => `${new Date((hour.dt + offset) * 1000).toISOString().slice(11, 16)} ${Number.isFinite(hour.temp) ? hour.temp + '°C' : 'unavailable'}${hasChance ? ` / ${validChance(hour.pop) ? Math.round(hour.pop * 100) + '%' : 'precipitation unavailable'}` : ''}`).join(', ')}` };
+    return { svg, height: 146, summary: `Hourly temperatures${hasChance ? ' and precipitation chance' : ''}${hasAmount ? ' and precipitation amounts' : ''}: ${hours.map(hour => `${new Date((hour.dt + offset) * 1000).toISOString().slice(11, 16)} ${Number.isFinite(hour.temp) ? hour.temp + '°C' : 'unavailable'}${hasChance ? ` / ${validChance(hour.pop) ? Math.round(hour.pop * 100) + '%' : 'precipitation unavailable'}` : ''}${hasAmount ? ` / ${Number.isFinite(precipitationAmount(hour)) ? formatAmount(precipitationAmount(hour)) + ' mm/h' : 'amount unavailable'}` : ''}`).join(', ')}` };
 }
 
 module.exports = { hourlyTemperatures, drawHourly };

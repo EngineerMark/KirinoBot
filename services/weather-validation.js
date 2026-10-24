@@ -2,6 +2,7 @@ const finite = value => Number.isFinite(value) ? value : NaN;
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const timestamp = value => Number.isInteger(value) && value >= 0 && value < 8e12;
 const text = value => typeof value === 'string' && value.trim() ? value : 'Unavailable';
+const hourlyAmount = value => value === undefined ? undefined : { '1h': Number.isFinite(value?.['1h']) && value['1h'] >= 0 ? value['1h'] : NaN };
 
 function coordinates(value) {
     return object(value) && Number.isFinite(value.lat) && Math.abs(value.lat) <= 90
@@ -47,6 +48,7 @@ function weatherResponse(data) {
         hourly: Array.isArray(data.hourly) ? data.hourly.slice(0, 168).map(hour => ({
             dt: timestamp(hour?.dt) ? hour.dt : NaN, temp: finite(hour?.temp),
             pop: Number.isFinite(hour?.pop) && hour.pop >= 0 && hour.pop <= 1 ? hour.pop : NaN,
+            rain: hourlyAmount(hour?.rain), snow: hourlyAmount(hour?.snow),
             wind_speed: Number.isFinite(hour?.wind_speed) && hour.wind_speed >= 0 ? hour.wind_speed : NaN,
             wind_gust: Number.isFinite(hour?.wind_gust) && hour.wind_gust >= 0 ? hour.wind_gust : NaN,
             wind_deg: Number.isFinite(hour?.wind_deg) && hour.wind_deg >= 0 && hour.wind_deg <= 360 ? hour.wind_deg : NaN,
@@ -63,6 +65,21 @@ function airQualityResponse(data) {
     const components = Object.fromEntries(['co', 'no', 'no2', 'o3', 'so2', 'pm2_5', 'pm10', 'nh3']
         .map(key => [key, Number.isFinite(entry.components?.[key]) && entry.components[key] >= 0 ? entry.components[key] : NaN]));
     return { list: [{ main: { aqi }, components }] };
+}
+
+function airQualityForecastResponse(data) {
+    if (!Array.isArray(data?.list) || !data.list.length) throw new Error('Invalid air quality forecast response');
+    const entries = new Map();
+    for (const item of data.list.slice(0, 192)) {
+        if (!timestamp(item?.dt)) continue;
+        const aqi = item?.main?.aqi;
+        const valid = Number.isInteger(aqi) && aqi >= 1 && aqi <= 5;
+        const existing = entries.get(item.dt);
+        if (!existing || !Number.isFinite(existing.main.aqi)) entries.set(item.dt, { dt: item.dt, main: { aqi: valid ? aqi : NaN } });
+    }
+    const list = Array.from(entries.values()).sort((a, b) => a.dt - b.dt);
+    if (!list.some(item => Number.isFinite(item.main.aqi))) throw new Error('Invalid air quality forecast response');
+    return { list };
 }
 
 function stabilityResponse(data) {
@@ -88,4 +105,4 @@ function lightningResponse(data) {
     return { strikes, invalidRecords: data.length - strikes.length };
 }
 
-module.exports = { locationResponse, weatherResponse, airQualityResponse, stabilityResponse, lightningResponse };
+module.exports = { locationResponse, weatherResponse, airQualityResponse, airQualityForecastResponse, stabilityResponse, lightningResponse };

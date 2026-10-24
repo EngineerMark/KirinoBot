@@ -10,14 +10,15 @@ async function buildWeatherReply(location, mode, output) {
             return null;
         }
     };
-    const [airQuality, lightning, airStability] = await Promise.all([
+    const [airQuality, lightning, airStability, airQualityForecast] = await Promise.all([
         ['normal', 'airquality'].includes(mode) ? optional(() => weatherService.getAirQuality(location.lat, location.lon)) : null,
         ['normal', 'lightning'].includes(mode) ? optional(() => weatherService.getLightningData()) : null,
         mode === 'lightning' ? optional(() => weatherService.getAirStability(location.lat, location.lon)) : null,
+        mode === 'airquality' && output === 'image' ? optional(() => weatherService.getAirQualityForecast(location.lat, location.lon)) : null,
     ]);
     const embed = weatherService.getWeatherEmbed(location, weather, airQuality, lightning, airStability, mode);
     if (output === 'image') {
-        const image = await require('./weather-image').getWeatherImage(embed, mode, { weather, airQuality, lightning, airStability, location });
+        const image = await require('./weather-image').getWeatherImage(embed, mode, { weather, airQuality, lightning, airStability, airQualityForecast, location });
         return { content: '', embeds: [], attachments: [], ...image };
     }
     return { content: '', embeds: [embed], attachments: [], files: [] };

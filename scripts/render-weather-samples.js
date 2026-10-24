@@ -14,11 +14,12 @@ async function renderSamples(directory) {
     const weather = weatherResponse({
         current: { dt: now, sunrise: midnight + 7.5 * 3600, sunset: midnight + 18 * 3600, temp: 14, feels_like: 11, humidity: 87, clouds: 78, wind_speed: 14, wind_deg: 220, pressure: 995, visibility: 3000, weather: [{ description: 'Moderate rain' }] },
         timezone_offset: 3600,
-        hourly: Array.from({ length: 13 }, (_, index) => ({ dt: now + index * 3600, temp: 13 + Math.sin(index / 2) * 5, pop: (index % 5) / 4, wind_speed: 5 + Math.sin(index / 3) * 3, wind_gust: 8 + Math.sin(index / 3) * 4, wind_deg: (220 + index * 12) % 360 })),
+        hourly: Array.from({ length: 13 }, (_, index) => ({ dt: now + index * 3600, temp: 13 + Math.sin(index / 2) * 5, pop: (index % 5) / 4, rain: { '1h': [0, 0.15, 0.4, 1.2, 2.4][index % 5] }, wind_speed: 5 + Math.sin(index / 3) * 3, wind_gust: 8 + Math.sin(index / 3) * 4, wind_deg: (220 + index * 12) % 360 })),
         daily: Array.from({ length: 8 }, (_, index) => ({ dt: now + index * 86400, sunrise: midnight + index * 86400 + 7.5 * 3600, sunset: midnight + index * 86400 + 18 * 3600, temp: { min: 8 + index % 3, max: 16 + index % 5 }, pop: (index % 5) / 4, weather: [{ description: index % 2 ? 'Light rain' : 'Scattered clouds' }] })),
         alerts: [{ event: 'Orange warning of strong winds', sender_name: 'National weather service', start: now - 3600, end: now + 7200, description: 'Strong gusts expected along the coast. Travel disruption is possible. Follow the issuing agency for details.', tags: ['wind'] }, { event: 'Flood Watch', sender_name: 'Regional weather authority', start: now + 3600, end: now + 86400, description: 'Heavy rainfall may cause rivers to rise. Monitor official updates.', tags: ['flood'] }],
     });
     const airQuality = { list: [{ main: { aqi: 4 }, components: { pm2_5: 55, pm10: 110, no2: 45, o3: 110, so2: 12, co: 420, no: 2.3, nh3: 3.1 } }] };
+    const airQualityForecast = { list: Array.from({ length: 49 }, (_, index) => ({ dt: now + index * 3600, main: { aqi: [4, 4, 3, 3, 2, 2, 1, 2, 3, 3, 4, 5][Math.floor(index / 2) % 12] } })) };
     const lightning = { strikes: Array.from({ length: 90 }, (_, index) => {
         const angle = index * 2.4;
         const spread = 0.1 + index % 8 * 0.08;
@@ -36,7 +37,7 @@ async function renderSamples(directory) {
     const tiles = [];
     const metrics = [];
     for (const sample of samples) {
-        const context = { location, weather, airQuality, lightning, airStability, ...sample };
+        const context = { location, weather, airQuality, airQualityForecast, lightning, airStability, ...sample };
         const embed = getWeatherEmbed(context.location, context.weather, context.airQuality, context.lightning, context.airStability, sample.mode);
         const reply = await getWeatherImage(embed, sample.mode, context);
         const buffer = reply.files[0].attachment;

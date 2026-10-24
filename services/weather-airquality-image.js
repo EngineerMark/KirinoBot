@@ -1,3 +1,5 @@
+const { drawAirQualityForecast } = require('./weather-airquality-forecast-image');
+
 // OpenWeather concentration bands (µg/m³), inclusive lower boundaries:
 // https://openweathermap.org/api/air-pollution
 const BANDS = {
@@ -15,10 +17,13 @@ function pollutantRating(key, value) {
     return BANDS[key] && valid(value) ? BANDS[key].filter(limit => value >= limit).length + 1 : null;
 }
 
-function drawAirQuality(data, top) {
+function drawAirQuality(data, top, forecast, offset, availableHeight = 830) {
     const entry = data?.list?.[0];
     const aqi = entry?.main?.aqi;
-    if (!Number.isInteger(aqi) || aqi < 1 || aqi > 5) return null;
+    if (!Number.isInteger(aqi) || aqi < 1 || aqi > 5) return drawAirQualityForecast(forecast, top, offset);
+    const chartHeight = Math.max(150, Math.min(190, availableHeight - 620));
+    const chart = drawAirQualityForecast(forecast, top + 150, offset, chartHeight);
+    const extra = chart ? chart.height + 8 : 0;
     const components = entry.components || {};
     const color = COLORS[aqi - 1];
     let svg = `<g transform="translate(0 ${top})"><rect x="24" width="672" height="142" rx="14" fill="#202e46"/>
@@ -29,11 +34,15 @@ function drawAirQuality(data, top) {
         svg += `<rect x="${x}" y="88" width="116" height="36" rx="9" fill="${index === aqi - 1 ? COLORS[index] : '#101e32'}" stroke="${COLORS[index]}" stroke-opacity="${index === aqi - 1 ? 1 : 0.3}"/>
 <text x="${x + 58}" y="111" text-anchor="middle" font-size="13" font-weight="600" fill="${index === aqi - 1 ? '#101e32' : COLORS[index]}">${index + 1} ${label}</text>`;
     });
-    svg += `<rect x="24" y="154" width="672" height="448" rx="14" fill="#202e46"/>
+    if (!chart) svg += '<text x="678" y="66" text-anchor="end" fill="#a9bad1" font-size="12">Forecast unavailable</text>';
+    svg += '</g>';
+    if (chart) svg += chart.svg;
+    svg += `<g transform="translate(0 ${top + extra})"><rect x="24" y="154" width="672" height="448" rx="14" fill="#202e46"/>
 <text x="42" y="184" fill="#f0f4fc" font-size="18" font-weight="600">Pollutant severity</text>
 <text x="42" y="209" fill="#a9bad1" font-size="13">Each pollutant uses its own concentration bands.</text>
 <g text-anchor="middle"><text x="332" y="235" fill="#a9bad1" font-size="12">1</text><text x="382" y="235" fill="#a9bad1" font-size="12">2</text><text x="432" y="235" fill="#a9bad1" font-size="12">3</text><text x="482" y="235" fill="#a9bad1" font-size="12">4</text><text x="532" y="235" fill="#a9bad1" font-size="12">5</text></g>`;
     const summary = [`OpenWeather AQI: ${aqi}/5, ${LABELS[aqi - 1]}`];
+    if (chart) summary.push(chart.summary);
     Object.keys(BANDS).forEach((key, index) => {
         const value = components[key];
         const rating = pollutantRating(key, value);
@@ -52,7 +61,7 @@ function drawAirQuality(data, top) {
 <text x="42" y="559" fill="#a9bad1" font-size="13">Additional readings · not rated on this scale</text>
 <text x="42" y="584" fill="#f0f4fc" font-size="15">NO: ${concentration(components.no)}</text>
 <text x="350" y="584" fill="#f0f4fc" font-size="15">NH₃: ${concentration(components.nh3)}</text></g>`;
-    return { svg, height: 612, summary: summary.join('\n') };
+    return { svg, height: 612 + extra, summary: summary.join('\n') };
 }
 
 module.exports = { drawAirQuality, pollutantRating, BANDS };

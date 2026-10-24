@@ -84,7 +84,7 @@ function buildWeatherSvg(embed, mode = 'normal', context = {}) {
         body += lightning.svg;
         y += lightning.height;
     }
-    const airQuality = mode === 'airquality' ? drawAirQuality(context.airQuality, y) : null;
+    const airQuality = mode === 'airquality' ? drawAirQuality(context.airQuality, y, context.airQualityForecast, context.weather?.timezone_offset, MAX_HEIGHT - y - 16) : null;
     if (airQuality) {
         body += airQuality.svg;
         y += airQuality.height;

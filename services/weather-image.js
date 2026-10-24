@@ -1,6 +1,8 @@
 const sharp = require('sharp');
 const { AttachmentBuilder } = require('discord.js');
 const { weatherVisual, drawIcon, drawWindCompass } = require('./weather-visuals');
+const { drawForecast } = require('./weather-forecast-image');
+const { drawLightning } = require('./weather-lightning-image');
 
 // Render the same presentation data as embeds, without fetching remote assets.
 const WIDTH = 720;
@@ -54,7 +56,23 @@ function buildWeatherSvg(embed, mode = 'normal', context = {}) {
         body += textLines(notices.slice(0, 5), 32, y + 10, 17, '#f9cc83');
         y += Math.min(notices.length, 5) * 25 + 24;
     }
-    const fields = (data.fields || []).map(field => mode === 'normal' && field.name === 'Wind' ? { ...field, inline: true } : field);
+    const forecast = mode === 'forecast' ? drawForecast(context.weather, y, MAX_HEIGHT - y - 24) : null;
+    if (forecast) {
+        body += forecast.svg;
+        y += forecast.height;
+        overflow ||= forecast.overflow;
+    }
+    const lightning = mode === 'lightning' ? drawLightning(context.lightning, context.location, y) : null;
+    if (lightning) {
+        body += lightning.svg;
+        y += lightning.height;
+    }
+    const fields = (forecast ? [] : data.fields || []).map(field => {
+        if (mode === 'normal' && field.name === 'Wind') return { ...field, inline: true };
+        if (mode === 'lightning' && field.name === 'Lightning Activity') return { ...field, value: field.value.replace(/\n/g, ' · ') };
+        if (mode === 'lightning' && field.name === 'Recent Lightning Activity') return { ...field, value: field.value.replace(/In the last /g, '').replace(/ minutes:/g, ' min:').replace(/ strikes per minute/g, '/min').replace(/\n/g, ' · ') };
+        return field;
+    });
     for (let index = 0; index < fields.length; index++) {
         const field = fields[index];
         // Compact metrics share a row, while forecasts and alerts retain full width.
@@ -73,7 +91,7 @@ function buildWeatherSvg(embed, mode = 'normal', context = {}) {
         const valueCount = Math.min(Math.max(...prepared.map(item => Math.max(item.values.length, item.compass ? 3 : 0))), mode === 'alerts' ? 5 : 4);
         const hasBadge = prepared.some(item => item.badge);
         const height = 28 + labelCount * 26 + valueCount * 26 + (hasBadge ? 36 : 0);
-        if (y + height > MAX_HEIGHT - 76) {
+        if (y + height > MAX_HEIGHT - 24) {
             overflow = true;
             break;
         }
@@ -104,14 +122,12 @@ function buildWeatherSvg(embed, mode = 'normal', context = {}) {
         y += height;
     }
     if (data.footer?.text) overflow = true;
-    const height = Math.min(MAX_HEIGHT, Math.max(240, y + 68));
-    const footer = overflow ? 'Summary • Some details omitted; use output:embed for more' : 'OpenWeather / optional feeds • Descriptive bands';
+    const height = Math.min(MAX_HEIGHT, Math.max(240, y + 16));
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${height}" viewBox="0 0 ${WIDTH} ${height}">
 <defs><linearGradient id="bg" x2="1" y2="1"><stop stop-color="#182b47"/><stop offset="1" stop-color="#101927"/></linearGradient></defs>
 <rect width="720" height="${height}" rx="20" fill="url(#bg)"/>
 <path d="M32 24h32" stroke="#73d9e9" stroke-width="4" stroke-linecap="round"/>
-<g font-family="DejaVu Sans, Arial, sans-serif">${textLines([MODES[mode] || MODES.normal], 76, 30, 13, '#9bb1ce', 700)}${body}
-${textLines([footer], 32, height - 24, 14, '#a9bad1')}</g></svg>`;
+<g font-family="DejaVu Sans, Arial, sans-serif">${textLines([MODES[mode] || MODES.normal], 76, 30, 13, '#9bb1ce', 700)}${body}</g></svg>`;
     return { svg, fullText, overflow, height };
 }
 

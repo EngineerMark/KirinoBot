@@ -26,7 +26,7 @@ for (const scenario of ['complete-empty', 'partial-http', 'partial-shape', 'inva
         const embed = weather.getWeatherEmbed(location, { current: {} }, null, lightning, null, 'lightning');
         if (scenario === 'unavailable') {
             assert.equal(lightning, null);
-            assert.match(embed.toJSON().description, /unavailable.*unknown/);
+            assert.equal(embed.toJSON().description, undefined);
             assert.equal(field(embed, 'Lightning Activity'), undefined);
         }
         else if (scenario === 'complete-empty') {
@@ -35,14 +35,14 @@ for (const scenario of ['complete-empty', 'partial-http', 'partial-shape', 'inva
             assert.equal(embed.toJSON().description, undefined);
         }
         else {
-            assert.match(embed.toJSON().description, /Incomplete lightning data/);
+            assert.equal(embed.toJSON().description, undefined);
             assert.equal(lightning.availableFeeds, scenario === 'invalid-records' ? 24 : 23);
             if (scenario === 'invalid-records') {
                 assert.equal(lightning.invalidRecords, 1);
                 assert.equal(lightning.strikes[0].time.toISOString(), '2026-10-24T12:00:00.123Z');
             }
             const normal = weather.getWeatherEmbed(location, { current: {} }, null, lightning);
-            assert.match(normal.toJSON().description, /Incomplete lightning data/);
+            assert.equal(normal.toJSON().description, undefined);
         }
     });
 }

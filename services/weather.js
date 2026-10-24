@@ -81,14 +81,6 @@ function getWeatherEmbed(location, weatherData, airQualityData, lightningData, a
     catch { airStabilityData = null; }
     let embed = new WeatherEmbedBuilder();
     embed.setColor(config.botColor);
-    if (['normal', 'lightning'].includes(responseMode)) {
-        if (lightningData && (lightningData.availableFeeds < lightningData.totalFeeds || lightningData.invalidRecords > 0)) {
-            embed.setDescription(`Incomplete lightning data: ${lightningData.availableFeeds}/${lightningData.totalFeeds} feeds available; ${lightningData.invalidRecords || 0} invalid records omitted. Counts and chart reflect available data only.`);
-        }
-        else if (!lightningData) {
-            embed.setDescription('Lightning data unavailable; strike counts are unknown.');
-        }
-    }
     if (['normal', 'alerts'].includes(responseMode) && weatherData.invalidAlerts) {
         embed.setDescription([embed.data.description, `Incomplete weather alerts: ${weatherData.invalidAlerts} invalid records omitted.`].filter(Boolean).join('\n'));
     }
@@ -392,9 +384,6 @@ function getWeatherEmbedLightning(embed, location, weatherData, lightningData, a
 
         const chartUrl = getWeatherNearbyStrikesChart(lightningData, location);
         embed.setImage(chartUrl);
-    }
-    else {
-        embed.setDescription('Lightning data unavailable; strike counts are unknown.');
     }
 
     const stabilityIndex = getCurrentAirstabilityIndex(airStabilityData) ?? -1;

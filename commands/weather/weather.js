@@ -56,7 +56,7 @@ module.exports = {
                 const embed = getWeatherEmbed(locData, weather, airQuality, lightning, airStability, mode);
                 if (interaction.options.getString('output') === 'image') {
                     try {
-                        const image = await getWeatherImage(embed, mode, { weather, airQuality, airStability });
+                        const image = await getWeatherImage(embed, mode, { weather, airQuality, airStability, lightning, location: locData });
                         await interaction.editReply(image);
                         return;
                     }

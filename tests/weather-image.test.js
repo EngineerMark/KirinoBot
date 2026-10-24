@@ -4,6 +4,8 @@ const sharp = require('sharp');
 const { getWeatherEmbed } = require('../services/weather');
 const { getWeatherImage, buildWeatherSvg } = require('../services/weather-image');
 const { weatherVisual, drawWindCompass } = require('../services/weather-visuals');
+const { drawForecast, forecastDays } = require('../services/weather-forecast-image');
+const { lightningBuckets, drawLightning } = require('../services/weather-lightning-image');
 
 const location = { name: 'Amsterdam', country: 'NL', lat: 52, lon: 5 };
 const weather = {
@@ -38,6 +40,47 @@ test('wind labels use unrounded measurements at Beaufort boundaries', () => {
     for (const speed of [undefined, null, NaN, -1, '20']) assert.equal(weatherVisual({ name: 'Wind' }, { weather: { current: { wind_speed: speed } } }).badge, null);
 });
 
+test('lightning graph buckets the last two hours and excludes distant, future and invalid strikes', async () => {
+    const now = Date.parse('2026-10-25T12:00:00Z');
+    const strike = (minutes, coord = location) => ({ time: new Date(now - minutes * 60000), coord });
+    const lightning = { strikes: [strike(120), strike(110), strike(0), strike(121), strike(-1), strike(10, { lat: 0, lon: 0 }), { time: new Date('bad'), coord: location }] };
+    const buckets = lightningBuckets(lightning, location, now);
+    assert.equal(buckets[0].count, 1);
+    assert.equal(buckets[1].count, 1);
+    assert.equal(buckets[11].count, 1);
+    assert.equal(buckets.reduce((sum, bucket) => sum + bucket.count, 0), 3);
+    assert.equal(buckets[0].nearest, 0);
+    assert.equal(buckets[2].nearest, null);
+    assert.equal(drawLightning(null, location, 0, now), null);
+    const empty = drawLightning({ strikes: [] }, location, 0, now);
+    assert.ok(empty);
+    assert.doesNotMatch(empty.svg, /NaN|undefined|https?:/);
+    const image = await getWeatherImage({ title: 'Lightning', fields: [] }, 'lightning', { lightning: { strikes: [] }, location });
+    assert.equal(image.files.length, 1);
+    assert.equal((await sharp(image.files[0].attachment).metadata()).width, 720);
+    const svg = buildWeatherSvg({ title: 'Lightning' }, 'lightning', { lightning: { strikes: [] }, location }).svg;
+    assert.match(svg, /Strikes \/ 10 min/);
+    assert.doesNotMatch(svg, /missing|incomplete|footer/i);
+});
+
+test('forecast graph uses local dates, all seven upcoming days and gaps for missing temperatures', () => {
+    const input = { timezone_offset: 3600, daily: Array.from({ length: 8 }, (_, index) => ({ dt: Date.parse('2026-10-24T23:30Z') / 1000 + index * 86400, temp: { min: index === 3 ? null : -5, max: 0 }, pop: index === 1 ? 0 : null })) };
+    const days = forecastDays(input);
+    assert.equal(days.length, 7);
+    assert.equal(days[0].date, '2026-10-26');
+    const graph = drawForecast(input, 114, 820);
+    assert.equal(graph.overflow, false);
+    assert.match(graph.svg, /0% precip\. chance/);
+    assert.match(graph.svg, /-5°/);
+    assert.doesNotMatch(graph.svg, /NaN|undefined|null|https?:/);
+    const lowPath = graph.svg.match(/data-series="min" d="([^"]*)"/)[1];
+    assert.equal((lowPath.match(/M/g) || []).length, 2);
+    assert.equal(drawForecast({ daily: [] }, 0, 800), null);
+    const missing = drawForecast({ daily: [{}, { dt: 123, temp: {} }] }, 0, 800);
+    assert.match(missing.svg, /Temperature data unavailable/);
+    assert.doesNotMatch(missing.svg, /NaN|undefined/);
+});
+
 test('visual badges preserve zeros, missing values and the provider AQI scale', () => {
     assert.equal(weatherVisual({ name: 'Humidity' }, { weather: { current: { humidity: 0 } } }).badge.label, 'Low humidity');
     assert.equal(weatherVisual({ name: 'Visibility' }, { weather: { current: { visibility: 500 } } }).badge.label, 'Very low visibility');
@@ -58,7 +101,7 @@ test('dynamic SVG text is escaped and overflowing replies only attach an image',
     assert.ok(result.overflow);
     const reply = await getWeatherImage(data, 'alerts');
     assert.equal(reply.files.length, 1);
-    assert.match(result.svg, /Some details omitted/);
+    assert.doesNotMatch(result.svg, /Some details omitted|Descriptive bands|optional feeds/);
     assert.doesNotMatch(result.svg, /weather-details\.txt/);
     assert.doesNotMatch(result.svg, /<t:/);
 });

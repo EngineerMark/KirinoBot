@@ -4,7 +4,8 @@ const { weatherVisual, drawIcon, drawWindCompass } = require('./weather-visuals'
 const { drawForecast } = require('./weather-forecast-image');
 const { drawLightning } = require('./weather-lightning-image');
 const { drawAirQuality } = require('./weather-airquality-image');
-const { drawAlerts } = require('./weather-alerts-image');
+const { drawAlerts, drawAlertSymbols } = require('./weather-alerts-image');
+const { drawImageTitle } = require('./weather-image-title');
 
 // Render the same presentation data as embeds, without fetching remote assets.
 const WIDTH = 720;
@@ -48,15 +49,21 @@ function textLines(lines, x, y, size, color, weight = 400) {
 function buildWeatherSvg(embed, mode = 'normal', context = {}) {
     const data = typeof embed.toJSON === 'function' ? embed.toJSON() : embed;
     let fullText = [plainText(data.title), plainText(data.description), ...(data.fields || []).map(field => `${plainText(field.name)}\n${plainText(field.value)}${weatherVisual(field, context, mode).badge ? '\n' + weatherVisual(field, context, mode).badge.label : ''}`), plainText(data.footer?.text), 'Display bands are descriptive, not official warnings. Wind labels use the Beaufort scale.'].filter(Boolean).join('\n\n');
-    const title = wrap(data.title, 36);
-    let overflow = title.length > 2;
-    let y = 76 + Math.min(title.length, 2) * 38;
-    let body = textLines(title.slice(0, 2), 32, 82, 30, '#f5f8ff', 700);
+    const title = drawImageTitle(data.title, context.location, { plainText, escapeXml });
+    let overflow = title.overflow;
+    let y = 76 + title.lines * 38;
+    let body = title.svg;
     if (data.description) {
         const notices = wrap(data.description, 64);
         overflow ||= notices.length > 5;
         body += textLines(notices.slice(0, 5), 32, y + 10, 17, '#f9cc83');
         y += Math.min(notices.length, 5) * 25 + 24;
+    }
+    const alertSymbols = mode === 'normal' ? drawAlertSymbols(context.weather, y, { textLines }) : null;
+    if (alertSymbols) {
+        body += alertSymbols.svg;
+        y += alertSymbols.height;
+        fullText = [plainText(data.title), alertSymbols.summary, fullText].join('\n\n');
     }
     const forecast = mode === 'forecast' ? drawForecast(context.weather, y, MAX_HEIGHT - y - 24) : null;
     if (forecast) {
@@ -81,7 +88,7 @@ function buildWeatherSvg(embed, mode = 'normal', context = {}) {
         y += alerts.height;
         fullText = [plainText(data.title), alerts.summary, fullText].join('\n\n');
     }
-    const fields = (forecast || airQuality || alerts ? [] : data.fields || []).map(field => {
+    const fields = (forecast || airQuality || alerts ? [] : data.fields || []).filter(field => mode !== 'normal' || field.name !== 'Weather Alerts').map(field => {
         if (mode === 'normal' && field.name === 'Wind') return { ...field, inline: true };
         if (mode === 'lightning' && field.name === 'Lightning Activity') return { ...field, value: field.value.replace(/\n/g, ' · ') };
         if (mode === 'lightning' && field.name === 'Recent Lightning Activity') return { ...field, value: field.value.replace(/In the last /g, '').replace(/ minutes:/g, ' min:').replace(/ strikes per minute/g, '/min').replace(/\n/g, ' · ') };

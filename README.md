@@ -70,6 +70,10 @@ Tests mock HTTP and Discord operations; they do not log in, publish commands, va
 
 ## Weather data and missing values
 
+Weather image headings include a country flag directly after the location name, using local `flag-icons` SVG assets when the location has a supported two-letter country code. Flags do not depend on emoji fonts or remote image requests; missing or unsupported codes simply omit the flag.
+
+The main weather image displays alerts as compact severity-colored hazard symbols with tiny relative timing labels (time remaining, upcoming start, ended, or unknown). It omits the full alert text panel; use `mode:alerts` for detailed cards. Up to seven symbols fit in one row; larger sets show six symbols and a remaining-count badge. No strip appears when no alerts are returned. Alert names and classifications remain in the image attachment description.
+
 Alert images use hazard-specific vector icons and colored badges taken from explicit event-title labels (red/orange/yellow warning or alert, Warning, Watch, Advisory). Titles without a recognized label show Unspecified; hazard names and description text do not imply a severity rating. OpenWeather's alert schema has no separate severity field. Cards show the source agency, local start/end times (UTC if the offset is unavailable), and Active/Upcoming/Expired status. Long titles and descriptions end with an ellipsis, and an in-card count reports when only some alerts fit. Empty alerts and unavailable alert data have distinct states. Images retain the 720 × 960 limit and attach only the PNG.
 
 Air-quality images include an overall OpenWeather 1–5 rating and a horizontal severity chart for PM2.5, PM10, NO₂, O₃, SO₂, and CO, alongside their concentrations in µg/m³. Chart lengths represent severity categories, not comparable raw concentrations. Ratings use [OpenWeather's pollutant-specific boundaries](https://openweathermap.org/api/air-pollution), including the lower boundary in each higher category. NO and NH₃ are displayed as ungraded additional readings; missing concentrations are unavailable rather than rated as good. These are OpenWeather categories, not US EPA AQI values.

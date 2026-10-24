@@ -9,6 +9,7 @@ const { lightningBuckets, drawLightning } = require('../services/weather-lightni
 const { drawAirQuality, pollutantRating, BANDS } = require('../services/weather-airquality-image');
 const { alertSeverity, alertStatus, alertIcon } = require('../services/weather-alerts-image');
 const { weatherResponse } = require('../services/weather-validation');
+const { countryFlag } = require('../services/weather-country-flag');
 
 const location = { name: 'Amsterdam', country: 'NL', lat: 52, lon: 5 };
 const weather = {
@@ -43,6 +44,21 @@ test('wind labels use unrounded measurements at Beaufort boundaries', () => {
     for (const speed of [undefined, null, NaN, -1, '20']) assert.equal(weatherVisual({ name: 'Wind' }, { weather: { current: { wind_speed: speed } } }).badge, null);
 });
 
+test('location flags use local SVG assets and safely omit unknown countries in every mode', async () => {
+    for (const code of ['NL', 'US', 'JP', 'GB']) assert.match(countryFlag(code), /data:image\/svg\+xml;base64,/);
+    assert.equal(countryFlag('NL'), countryFlag('nl'));
+    for (const invalid of [null, undefined, '', 'ZZ', '../nl', '<svg>', 'NLD']) assert.equal(countryFlag(invalid), '');
+    for (const mode of ['normal', 'forecast', 'airquality', 'alerts', 'lightning']) {
+        const embed = getWeatherEmbed(location, weather, null, null, null, mode);
+        const result = buildWeatherSvg(embed, mode, { weather, location });
+        assert.match(result.svg, /data:image\/svg\+xml;base64,/);
+        assert.match(result.svg, /x="32" y="82"/);
+        assert.ok(result.svg.indexOf('Amsterdam</text>') < result.svg.indexOf('data:image/svg+xml;base64,'));
+    }
+    const reply = await getWeatherImage({ title: 'Weather in Amsterdam' }, 'normal', { location });
+    assert.equal((await sharp(reply.files[0].attachment).metadata()).width, 720);
+});
+
 test('alert badges reflect explicit title labels, without guessing severity from hazard text', () => {
     for (const [event, label] of [['Red warning of wind', 'Red warning'], ['Orange weather alert', 'Orange alert'], ['Yellow warning', 'Yellow warning'], ['Tornado Warning', 'Warning'], ['Flood Watch', 'Watch'], ['Wind Advisory', 'Advisory'], ['Severe thunderstorm', 'Unspecified'], ['Strong winds', 'Unspecified']]) {
         assert.equal(alertSeverity(event).label, label);
@@ -54,6 +70,23 @@ test('alert badges reflect explicit title labels, without guessing severity from
     assert.equal(alertStatus({ start: 10, end: 20 }, 5000), 'Upcoming');
     assert.equal(alertStatus({ start: 10, end: 20 }, 25000), 'Expired');
     assert.equal(alertStatus({ start: null, end: 20 }, 15000), 'Timing unknown');
+});
+
+test('main image shows compact alert symbols with timing instead of alert text panels', () => {
+    const now = Math.floor(Date.now() / 1000);
+    const input = { ...weather, alerts: [{ event: 'Red warning of wind', start: now - 60, end: now + 3600, description: 'Unique full alert description', tags: ['wind'] }, { event: 'Flood Watch', start: now + 7200, end: now + 14400 }] };
+    const embed = getWeatherEmbed(location, input);
+    const result = buildWeatherSvg(embed, 'normal', { weather: input });
+    assert.match(result.svg, /left/);
+    assert.match(result.svg, /In 2h/);
+    assert.match(result.svg, /#ff889c/);
+    assert.match(result.fullText, /Red warning of wind/);
+    assert.doesNotMatch(result.svg, /Weather Alerts|Red warning of wind|Flood Watch|Unique full alert description/);
+    const empty = buildWeatherSvg(embed, 'normal', { weather: { ...input, alerts: [] } });
+    assert.doesNotMatch(empty.svg, /left|In 2h/);
+    const many = buildWeatherSvg(embed, 'normal', { weather: { ...input, alerts: Array(20).fill(input.alerts[0]) } });
+    assert.match(many.svg, />\+14</);
+    assert.ok(many.height <= 960);
 });
 
 test('themed alert cards preserve sources, escape content, and stay bounded with many long alerts', async () => {

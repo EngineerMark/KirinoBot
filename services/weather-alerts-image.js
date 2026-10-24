@@ -81,4 +81,30 @@ ${textLines(description, 44, 134 + title.length * 28, 17, '#f0f4fc')}</g>`;
     return { svg, height, summary: summary.join('\n') };
 }
 
-module.exports = { drawAlerts, alertSeverity, alertStatus, alertIcon };
+function drawAlertSymbols(weather, top, { textLines }, now = Date.now()) {
+    const alerts = Array.isArray(weather?.alerts) ? weather.alerts : [];
+    if (!alerts.length) return null;
+    const shown = alerts.slice(0, alerts.length > 7 ? 6 : 7);
+    const summary = [];
+    let svg = `<g transform="translate(0 ${top})">`;
+    shown.forEach((alert, index) => {
+        const severity = alertSeverity(alert.event);
+        const status = alertStatus(alert, now);
+        const remaining = status === 'Upcoming' ? alert.start * 1000 - now : alert.end * 1000 - now;
+        const duration = remaining < 3600000 ? `${Math.max(1, Math.ceil(remaining / 60000))}m` : remaining < 86400000 ? `${Math.ceil(remaining / 3600000)}h` : `${Math.ceil(remaining / 86400000)}d`;
+        const timing = status === 'Active' ? `${duration} left` : status === 'Upcoming' ? `In ${duration}` : status === 'Expired' ? 'Ended' : 'Time ?';
+        const x = 24 + index * 94;
+        svg += `<rect x="${x}" width="84" height="76" rx="14" fill="#202e46"/>
+<circle cx="${x + 42}" cy="26" r="20" fill="#101e32" stroke="${severity.color}" stroke-opacity="0.5"/>
+${drawIcon(alertIcon(alert), x + 29, 13, severity.color, 26)}
+${textLines([timing], x + 12, 65, 11, severity.color)}`;
+        summary.push(`${alert.event}: ${severity.label}, ${status}, ${timing}`);
+    });
+    if (shown.length < alerts.length) {
+        svg += `<rect x="588" width="84" height="76" rx="14" fill="#202e46"/>${textLines([`+${alerts.length - shown.length}`], 608, 46, 22, '#a9bad1', 600)}`;
+    }
+    svg += '</g>';
+    return { svg, height: 88, summary: summary.join('\n') };
+}
+
+module.exports = { drawAlerts, drawAlertSymbols, alertSeverity, alertStatus, alertIcon };

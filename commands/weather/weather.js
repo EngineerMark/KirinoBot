@@ -1,5 +1,6 @@
 const { SlashCommandBuilder } = require('discord.js');
 const { getLocation, getWeather, getAirQuality, getLightningData, getAirStability, getWeatherEmbed } = require('../../services/weather');
+const { getWeatherImage } = require('../../services/weather-image');
 
 module.exports = {
     data: new SlashCommandBuilder().setName('weather')
@@ -17,6 +18,13 @@ module.exports = {
                     { name: 'Forecast', value: 'forecast' },
                     { name: 'Air Quality', value: 'airquality' },
                     { name: 'Lightning', value: 'lightning' },
+                ))
+        .addStringOption(option =>
+            option.setName('output')
+                .setDescription('Response format (defaults to embed)')
+                .addChoices(
+                    { name: 'Embed', value: 'embed' },
+                    { name: 'Image', value: 'image' },
                 )),
     async execute(interaction) {
         await interaction.deferReply();
@@ -46,6 +54,18 @@ module.exports = {
 
             if (weather) {
                 const embed = getWeatherEmbed(locData, weather, airQuality, lightning, airStability, mode);
+                if (interaction.options.getString('output') === 'image') {
+                    try {
+                        const image = await getWeatherImage(embed, mode);
+                        await interaction.editReply(image);
+                        return;
+                    }
+                    catch (error) {
+                        console.error('Weather image output failed:', error);
+                        await interaction.editReply({ content: 'Image output is unavailable; showing an embed instead.', embeds: [embed], attachments: [] });
+                        return;
+                    }
+                }
                 await interaction.editReply({ embeds: [embed] });
             }
             else {

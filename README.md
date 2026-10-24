@@ -2,6 +2,8 @@
 
 A Discord bot with `/ping`, `/server`, and `/weather`. Weather modes include current conditions, alerts, forecast, air quality, and lightning.
 
+Use `/weather location:Amsterdam output:image` for a compact PNG card, or combine it with any existing mode, such as `/weather location:Amsterdam mode:forecast output:image`. Omitting `output` keeps the default embed. Image cards are at most 720 × 960 pixels and 1 MiB; lengthy content is summarized on the card with the remaining presentation details in `weather-details.txt`. Images use Sharp locally and do not fetch QuickChart images or condition icons. If rendering or uploading fails, the command attempts an embed fallback. Re-run `node deploy-commands.js` after installing dependencies and restart the bot to expose the new option.
+
 ## Requirements
 
 - Node.js 22.13 or newer on the Node 22 line, or Node 24+, with npm. Development and tests have been checked with Node 22.16.0. The installed ESLint version requires at least 22.13 on Node 22.

@@ -2,7 +2,7 @@
 
 A Discord bot with `/ping`, `/server`, and `/weather`. Weather modes include current conditions, alerts, forecast, air quality, and lightning.
 
-Use `/weather location:Amsterdam output:image` for a compact PNG card, or combine it with any existing mode, such as `/weather location:Amsterdam mode:forecast output:image`. Omitting `output` keeps the default embed. Image cards are at most 720 × 960 pixels and 1 MiB; lengthy content is summarized on the card with the remaining presentation details in `weather-details.txt`. Images use Sharp locally and do not fetch QuickChart images or condition icons. If rendering or uploading fails, the command attempts an embed fallback. Re-run `node deploy-commands.js` after installing dependencies and restart the bot to expose the new option.
+Use `/weather location:Amsterdam output:image` for a compact PNG card, or combine it with any existing mode, such as `/weather location:Amsterdam mode:forecast output:image`. Omitting `output` keeps the default embed. Image cards are at most 720 × 960 pixels and 1 MiB; lengthy content is summarized on the card with an omission notice. Image replies attach only the PNG; use `output:embed` for additional detail. Images use Sharp locally and do not fetch QuickChart images or condition icons. If rendering or uploading fails, the command attempts an embed fallback. Re-run `node deploy-commands.js` after installing dependencies and restart the bot to expose the new option.
 
 ## Requirements
 
@@ -69,6 +69,8 @@ npm test
 Tests mock HTTP and Discord operations; they do not log in, publish commands, validate your subscription, or establish live provider availability. Manually check each weather mode in Discord after configuring credentials.
 
 ## Weather data and missing values
+
+Image output adds local vector icons, colored descriptive badges, and segmented meters for temperature/feels-like, Beaufort wind force, humidity, cloud coverage, pressure, visibility, OpenWeather's 1–5 AQI, forecast precipitation probability, and CAPE instability. Badges use numeric feed values rather than rounded display text; unavailable values have no badge. Wind follows [Beaufort thresholds](https://weather.metoffice.gov.uk/guides/coast-and-sea/beaufort-scale). Other display bands are simple descriptive ranges, not official warnings or health assessments. CAPE describes instability, not a thunderstorm probability. Temperature bands use 0/10/20/30 °C, humidity 30/70%, clouds 10/30/70/90%, visibility 1/5/10 km, pressure 1000/1020 hPa, and CAPE 500/1000/2500/4000 J/kg. Meters show the measured level within each display scale; color is accompanied by text. Additional labels also appear in attachment descriptions. Wind direction uses a compass needle pointing toward the wind source, with cardinal markers and a From label; missing directions display Unknown.
 
 - Location lookup and the primary One Call weather response are required. An unusable response produces a command error; a valid empty location lookup reports that the location was not found.
 - Missing or invalid measurements display as **Unavailable** rather than being converted to zero. Valid zeros remain zero. Invalid forecast dates and alert records are skipped with a visible notice; missing forecasts or air quality get explicit unavailable messages. Alert text is shortened and omitted alerts are summarized to fit Discord's embed limits.

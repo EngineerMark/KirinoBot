@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const sharp = require('sharp');
 const { getWeatherEmbed } = require('../services/weather');
 const { getWeatherImage, buildWeatherSvg } = require('../services/weather-image');
+const { weatherVisual, drawWindCompass } = require('../services/weather-visuals');
 
 const location = { name: 'Amsterdam', country: 'NL', lat: 52, lon: 5 };
 const weather = {
@@ -15,7 +16,7 @@ const weather = {
 for (const mode of ['normal', 'forecast', 'alerts', 'airquality', 'lightning']) {
     test(`${mode} produces a bounded, compact PNG including unavailable notices`, async () => {
         const embed = getWeatherEmbed(location, weather, null, null, null, mode);
-        const reply = await getWeatherImage(embed, mode);
+        const reply = await getWeatherImage(embed, mode, { weather });
         const buffer = reply.files[0].attachment;
         const metadata = await sharp(buffer).metadata();
         assert.equal(metadata.format, 'png');
@@ -27,16 +28,51 @@ for (const mode of ['normal', 'forecast', 'alerts', 'airquality', 'lightning']) 
     });
 }
 
-test('dynamic SVG text is escaped and excessive content has a complete text companion', async () => {
+test('wind labels use unrounded measurements at Beaufort boundaries', () => {
+    for (const [speed, label] of [[0, 'Calm'], [0.299, 'Calm'], [0.3, 'Light air'], [10.799, 'Fresh breeze'], [10.8, 'Strong breeze'], [17.2, 'Gale'], [32.7, 'Hurricane force']]) {
+        const { badge, icon } = weatherVisual({ name: 'Wind' }, { weather: { current: { wind_speed: speed } } });
+        assert.ok(badge.label.startsWith(label), `${speed}: ${badge.label}`);
+        assert.equal(icon, 'wind');
+        assert.ok(badge.fraction >= 0 && badge.fraction <= 1);
+    }
+    for (const speed of [undefined, null, NaN, -1, '20']) assert.equal(weatherVisual({ name: 'Wind' }, { weather: { current: { wind_speed: speed } } }).badge, null);
+});
+
+test('visual badges preserve zeros, missing values and the provider AQI scale', () => {
+    assert.equal(weatherVisual({ name: 'Humidity' }, { weather: { current: { humidity: 0 } } }).badge.label, 'Low humidity');
+    assert.equal(weatherVisual({ name: 'Visibility' }, { weather: { current: { visibility: 500 } } }).badge.label, 'Very low visibility');
+    assert.equal(weatherVisual({ name: 'Air Quality' }, { airQuality: { list: [{ main: { aqi: 5 } }] } }).badge.label, 'Very poor · AQI 5');
+    for (const name of ['Conditions', 'Wind', 'Humidity', 'Visibility', 'Air Quality', 'Air Stability']) assert.equal(weatherVisual({ name }).badge, null);
+    const data = { title: 'Weather', fields: [{ name: 'Wind', value: '50 km/h' }] };
+    const result = buildWeatherSvg(data, 'normal', { weather: { current: { wind_speed: 14 } } });
+    assert.match(result.svg, /Near gale/);
+    assert.match(result.fullText, /Near gale/);
+    assert.match(result.svg, /viewBox="0 0 24 24"/);
+});
+
+test('dynamic SVG text is escaped and overflowing replies only attach an image', async () => {
     const data = { title: '<script>& Amsterdam', fields: Array.from({ length: 25 }, (_, index) => ({ name: `Alert ${index}`, value: 'Long alert description '.repeat(80) })) };
     const result = buildWeatherSvg(data, 'alerts');
     assert.doesNotMatch(result.svg, /<script>/);
     assert.match(result.svg, /&lt;script&gt;&amp;/);
     assert.ok(result.overflow);
     const reply = await getWeatherImage(data, 'alerts');
-    assert.equal(reply.files[1].name, 'weather-details.txt');
-    assert.match(reply.files[1].attachment.toString(), /Alert 24/);
+    assert.equal(reply.files.length, 1);
+    assert.match(result.svg, /Some details omitted/);
+    assert.doesNotMatch(result.svg, /weather-details\.txt/);
     assert.doesNotMatch(result.svg, /<t:/);
+});
+
+test('wind compass points toward the wind source and handles missing bearings', () => {
+    for (const [degrees, direction] of [[0, 'N'], [90, 'E'], [180, 'S'], [270, 'W'], [220, 'SW'], [360, 'N']]) {
+        const svg = drawWindCompass(degrees, 0, 0);
+        assert.match(svg, new RegExp(`Wind from ${direction}"`));
+        assert.ok(svg.includes(`rotate(${degrees % 360} 32 32)`));
+    }
+    for (const invalid of [null, undefined, NaN, -1, 361, '90']) {
+        assert.match(drawWindCompass(invalid, 0, 0), /Unknown/);
+        assert.doesNotMatch(drawWindCompass(invalid, 0, 0), /rotate\(/);
+    }
 });
 
 test('slash command exposes independent output choices without a required default', () => {

@@ -1,5 +1,6 @@
 const sharp = require('sharp');
 const { AttachmentBuilder } = require('discord.js');
+const { weatherVisual, drawIcon, drawWindCompass } = require('./weather-visuals');
 
 // Render the same presentation data as embeds, without fetching remote assets.
 const WIDTH = 720;
@@ -40,9 +41,9 @@ function textLines(lines, x, y, size, color, weight = 400) {
     return lines.map((line, index) => `<text x="${x}" y="${y + index * (size + 8)}" font-size="${size}" fill="${color}" font-weight="${weight}">${escapeXml(line)}</text>`).join('');
 }
 
-function buildWeatherSvg(embed, mode = 'normal') {
+function buildWeatherSvg(embed, mode = 'normal', context = {}) {
     const data = typeof embed.toJSON === 'function' ? embed.toJSON() : embed;
-    const fullText = [plainText(data.title), plainText(data.description), ...(data.fields || []).map(field => `${plainText(field.name)}\n${plainText(field.value)}`), plainText(data.footer?.text)].filter(Boolean).join('\n\n');
+    const fullText = [plainText(data.title), plainText(data.description), ...(data.fields || []).map(field => `${plainText(field.name)}\n${plainText(field.value)}${weatherVisual(field, context, mode).badge ? '\n' + weatherVisual(field, context, mode).badge.label : ''}`), plainText(data.footer?.text), 'Display bands are descriptive, not official warnings. Wind labels use the Beaufort scale.'].filter(Boolean).join('\n\n');
     const title = wrap(data.title, 36);
     let overflow = title.length > 2;
     let y = 76 + Math.min(title.length, 2) * 38;
@@ -53,19 +54,25 @@ function buildWeatherSvg(embed, mode = 'normal') {
         body += textLines(notices.slice(0, 5), 32, y + 10, 17, '#f9cc83');
         y += Math.min(notices.length, 5) * 25 + 24;
     }
-    const fields = data.fields || [];
+    const fields = (data.fields || []).map(field => mode === 'normal' && field.name === 'Wind' ? { ...field, inline: true } : field);
     for (let index = 0; index < fields.length; index++) {
         const field = fields[index];
         // Compact metrics share a row, while forecasts and alerts retain full width.
         const pair = field.inline && fields[index + 1]?.inline ? fields[++index] : null;
         const row = pair ? [field, pair] : [field];
-        const columns = pair ? 28 : 62;
-        const prepared = row.map(item => ({ labels: wrap(item.name, pair ? 25 : 53), values: wrap(item.value, columns) }));
+        const columns = pair ? 25 : 59;
+        const prepared = row.map(item => ({
+            labels: wrap(item.name, pair ? 21 : 49),
+            values: wrap(item.name === 'Wind' ? plainText(item.value).replace(/ from .*/, '') : item.value, item.name === 'Wind' && pair ? 19 : columns),
+            compass: item.name === 'Wind',
+            ...weatherVisual(item, context, mode),
+        }));
         const labels = prepared.flatMap(item => item.labels);
         const values = prepared.flatMap(item => item.values);
         const labelCount = Math.min(Math.max(...prepared.map(item => item.labels.length)), 2);
-        const valueCount = Math.min(Math.max(...prepared.map(item => item.values.length)), mode === 'alerts' ? 5 : 4);
-        const height = 28 + labelCount * 26 + valueCount * 26;
+        const valueCount = Math.min(Math.max(...prepared.map(item => Math.max(item.values.length, item.compass ? 3 : 0))), mode === 'alerts' ? 5 : 4);
+        const hasBadge = prepared.some(item => item.badge);
+        const height = 28 + labelCount * 26 + valueCount * 26 + (hasBadge ? 36 : 0);
         if (y + height > MAX_HEIGHT - 76) {
             overflow = true;
             break;
@@ -75,15 +82,30 @@ function buildWeatherSvg(embed, mode = 'normal') {
             const item = prepared[column];
             overflow ||= item.labels.length > labelCount || item.values.length > valueCount;
             const x = 24 + column * 344;
-            body += `<rect x="${x}" y="${y}" width="${pair ? 328 : 672}" height="${height - 8}" rx="14" fill="#202e46"/>`;
-            body += textLines(item.labels.slice(0, labelCount), x + 18, y + 28, 18, '#8cd9ee', 600);
+            const width = pair ? 328 : 672;
+            body += `<rect x="${x}" y="${y}" width="${width}" height="${height - 8}" rx="14" fill="#202e46"/>`;
+            body += drawIcon(item.icon, x + 16, y + 11, item.badge?.color);
+            body += textLines(item.labels.slice(0, labelCount), x + 48, y + 28, 18, '#8cd9ee', 600);
             body += textLines(item.values.slice(0, valueCount), x + 18, y + 28 + labelCount * 26, 18, '#f0f4fc');
+            if (item.compass) body += drawWindCompass(context.weather?.current?.wind_deg, x + width - 84, y + 10, item.badge?.color);
+            if (item.badge) {
+                const badgeY = y + height - 39;
+                const badgeWidth = Math.min(width - 36, item.badge.label.length * 7.5 + 20);
+                body += `<rect x="${x + 18}" y="${badgeY - 15}" width="${badgeWidth}" height="24" rx="12" fill="#101e32"/>`;
+                body += textLines([item.badge.label], x + 28, badgeY + 2, 13, item.badge.color, 600);
+                // A segmented meter expresses the measured level, not warning severity.
+                for (let segment = 0; segment < 12; segment++) {
+                    const segmentWidth = (width - 47) / 12;
+                    const filled = segment < Math.round(item.badge.fraction * 12);
+                    body += `<rect x="${x + 18 + segment * (segmentWidth + 1)}" y="${y + height - 17}" width="${segmentWidth}" height="3" rx="1" fill="${filled ? item.badge.color : '#3a4860'}"/>`;
+                }
+            }
         }
         y += height;
     }
     if (data.footer?.text) overflow = true;
     const height = Math.min(MAX_HEIGHT, Math.max(240, y + 68));
-    const footer = overflow ? 'Full details in weather-details.txt' : 'Weather data • OpenWeather / optional feeds';
+    const footer = overflow ? 'Summary • Some details omitted; use output:embed for more' : 'OpenWeather / optional feeds • Descriptive bands';
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${height}" viewBox="0 0 ${WIDTH} ${height}">
 <defs><linearGradient id="bg" x2="1" y2="1"><stop stop-color="#182b47"/><stop offset="1" stop-color="#101927"/></linearGradient></defs>
 <rect width="720" height="${height}" rx="20" fill="url(#bg)"/>
@@ -94,16 +116,15 @@ ${textLines([footer], 32, height - 24, 14, '#a9bad1')}</g></svg>`;
 }
 
 let activeRenders = 0;
-async function getWeatherImage(embed, mode) {
+async function getWeatherImage(embed, mode, context) {
     // Bound native memory usage during bursts; the command falls back to embeds.
     if (activeRenders >= 2) throw new Error('Weather image renderer is busy');
     activeRenders++;
     try {
-        const { svg, fullText, overflow } = buildWeatherSvg(embed, mode);
+        const { svg, fullText } = buildWeatherSvg(embed, mode, context);
         const buffer = await sharp(Buffer.from(svg)).png({ compressionLevel: 9, palette: true }).toBuffer();
         if (buffer.length > 1024 * 1024) throw new Error('Weather image exceeded size budget');
         const files = [new AttachmentBuilder(buffer, { name: `weather-${mode || 'normal'}.png`, description: fullText.slice(0, 1000) })];
-        if (overflow) files.push(new AttachmentBuilder(Buffer.from(fullText), { name: 'weather-details.txt' }));
         return { files };
     }
     finally {

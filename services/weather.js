@@ -1,4 +1,4 @@
-const { EmbedBuilder } = require('discord.js');
+const { WeatherEmbedBuilder, truncate } = require('./weather-embed');
 const { fetchWithCache } = require('./api');
 const { formatNumber } = require('./helpers');
 const { countryCodeEmoji } = require('country-code-emoji');
@@ -91,7 +91,7 @@ function getWeatherEmbed(location, weatherData, airQualityData, lightningData, a
         throw new Error('No weather data available');
     }
 
-    let embed = new EmbedBuilder();
+    let embed = new WeatherEmbedBuilder();
     embed.setColor(config.botColor);
 
     switch (responseMode) {
@@ -202,13 +202,16 @@ function getWeatherEmbedNormal(embed, location, weatherData, airQualityData, lig
 
     if (weatherData.alerts && weatherData.alerts.length > 0) {
         let alertText = '';
+        let shown = 0;
         for (const alert of weatherData.alerts) {
-            // const startTime = new Date(alert.start * 1000).toLocaleString("en-US", { timeZone: weatherData.timezone });
-            // const endTime = new Date(alert.end * 1000).toLocaleString("en-US", { timeZone: weatherData.timezone });
-            const startTime = `<t:${alert.start}:R>`;
-            const endTime = `<t:${alert.end}:R>`;
-            alertText += `${getAlertEmoji(alert.tags?.[0] || '')} **${alert.event}** from ${startTime} to ${endTime}\n`;
+            const line = truncate(`${getAlertEmoji(alert.tags?.[0] || '')} **${alert.event}** from <t:${alert.start}:R> to <t:${alert.end}:R>`, 900) + '\n';
+            const omitted = weatherData.alerts.length - shown - 1;
+            const notice = omitted > 0 ? `${omitted} additional alerts omitted.` : '';
+            if (alertText.length + line.length + notice.length > 1024) break;
+            alertText += line;
+            shown++;
         }
+        if (shown < weatherData.alerts.length) alertText += `${weatherData.alerts.length - shown} additional alerts omitted.`;
         embed.addFields({
             name: 'Weather Alerts',
             value: alertText,
@@ -231,7 +234,7 @@ function getWeatherEmbedAlerts(embed, location, weatherData) {
         for (const alert of weatherData.alerts) {
             const startTime = `<t:${alert.start}:R>`;
             const endTime = `<t:${alert.end}:R>`;
-            const alertDescription = alert.description.length > 1024 ? alert.description.substring(0, 1021) + '...' : alert.description;
+            const alertDescription = truncate(alert.description, 1024);
             embed.addFields({
                 name: `${getAlertEmoji(alert.tags?.[0] || '')} **${alert.event}** from ${startTime} to ${endTime}`,
                 value: alertDescription,

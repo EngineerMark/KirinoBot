@@ -116,9 +116,10 @@ test('air-quality command reports feed failure without losing the weather reply'
     t.mock.method(globalThis, 'fetch', async url => ({ ok: true, json: async () => url.includes('/geo/') ? [location] : url.includes('/onecall') ? { current: {} } : { list: [] } }));
     let reply;
     await require('../commands/weather/weather').execute({
+        user: { id: '123' },
         options: { getString: name => name === 'mode' ? 'airquality' : 'Test' },
         deferReply: async () => undefined,
-        editReply: async value => { reply = value; },
+        editReply: async value => { reply = value; return { id: 'weather-message' }; },
     });
     assert.match(reply.embeds[0].toJSON().description, /Air quality data unavailable/);
 });

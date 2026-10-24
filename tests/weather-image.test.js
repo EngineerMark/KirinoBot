@@ -289,17 +289,24 @@ for (const output of [null, 'image', 'failure']) {
         const command = require('../commands/weather/weather');
         let reply;
         await command.execute({
+            user: { id: '123' },
             options: { getString: name => ({ location: 'Amsterdam', mode: 'airquality', output: output === 'failure' ? 'image' : output }[name]) },
             deferReply: async () => undefined,
-            editReply: async value => { reply = value; },
+            editReply: async value => { reply = value; return { id: 'weather-message' }; },
         });
         if (output === 'image') {
             assert.ok(reply.files[0].attachment.length > 0);
-            assert.equal(reply.embeds, undefined);
+            assert.deepEqual(reply.embeds, []);
+            assert.equal(reply.components[0].toJSON().components.length, 5);
+        }
+        else if (output === 'failure') {
+            assert.deepEqual(reply.embeds, []);
+            assert.match(reply.content, /Could not load the weather image/);
+            assert.deepEqual(reply.components, []);
         }
         else {
             assert.ok(reply.embeds[0]);
-            if (output === 'failure') assert.match(reply.content, /embed instead/);
+            assert.equal(reply.components[0].toJSON().components.length, 5);
         }
     });
 }

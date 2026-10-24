@@ -46,9 +46,10 @@ test('forecast only fetches location and weather', async (t) => {
     });
     let reply;
     await require('../commands/weather/weather').execute({
+        user: { id: '123' },
         options: { getString: name => name === 'mode' ? 'forecast' : 'unique-test-location' },
         deferReply: async () => undefined,
-        editReply: async value => { reply = value; },
+        editReply: async value => { reply = value; return { id: 'weather-message' }; },
     });
     assert.equal(urls.length, 2);
     assert.equal(reply.embeds.length, 1);

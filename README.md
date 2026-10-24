@@ -2,7 +2,11 @@
 
 A Discord bot with `/ping`, `/server`, and `/weather`. Weather modes include current conditions, alerts, forecast, air quality, and lightning.
 
-Use `/weather location:Amsterdam output:image` for a compact PNG card, or combine it with any existing mode, such as `/weather location:Amsterdam mode:forecast output:image`. Omitting `output` keeps the default embed. Image cards are at most 720 × 960 pixels and 1 MiB; lengthy content is summarized on the card. Cards have no footer. Image replies attach only the PNG; use `output:embed` for additional detail. Images use Sharp locally and do not fetch QuickChart images or condition icons. If rendering or uploading fails, the command attempts an embed fallback. Re-run `node deploy-commands.js` after installing dependencies and restart the bot to expose the new option.
+Use `/weather location:Amsterdam output:image` for a compact PNG card, or combine it with any existing mode, such as `/weather location:Amsterdam mode:forecast output:image`. Omitting `output` keeps the default embed. Image cards are at most 720 × 960 pixels and 1 MiB; lengthy content is summarized on the card. Cards have no footer. Image replies attach only the PNG; use `output:embed` for additional detail. Images use Sharp locally and do not fetch QuickChart images or condition icons. The output format stays fixed; an image failure does not switch to an embed. Re-run `node deploy-commands.js` after installing dependencies when slash-command options change, and restart the bot to load code changes.
+
+Successful weather replies include **Current**, **Forecast**, **Lightning**, **Air Quality**, and **Alerts** buttons. The original requester can switch modes on the same message, retaining the resolved location and original output format. The selected mode is highlighted and disabled; there is no output-format switch. Updates use the existing API cache and fetch only feeds needed for the selected mode. Old embeds and image attachments are replaced rather than accumulated. If an update fails, the current view remains available with a private error message; simultaneous switches are rejected while an update is in progress.
+
+Navigation sessions expire after 30 minutes without a successful switch, on bot restart, or when the 500-view memory limit evicts an older inactive view. Clicking an expired control gives a private instruction to run `/weather` again. Other users are directed to open their own view. These buttons need only a bot restart to enable; no command re-registration is needed for this change.
 
 ## Requirements
 
@@ -35,7 +39,7 @@ Set the embed color using `botColor` in `config.json`, for example `"#fa7ade"`.
 ## Install the bot and register commands
 
 1. Create an application in the [Discord Developer Portal](https://discord.com/developers/applications), add/configure its bot, and copy the bot token and application ID into `.env`.
-2. Configure a **Guild Install** with the `bot` and `applications.commands` scopes. Install it in your target server. See the [official installation guide](https://github.com/discord/discord-api-docs/blob/main/developers/quick-start/getting-started.mdx). Allow it to view the intended channel, send messages, and embed links. This bot uses only the Guilds gateway intent; privileged intents are not required by its code.
+2. Configure a **Guild Install** with the `bot` and `applications.commands` scopes. Install it in your target server. See the [official installation guide](https://github.com/discord/discord-api-docs/blob/main/developers/quick-start/getting-started.mdx). Allow it to view the intended channel, send messages, embed links, and attach files for image output. This bot uses only the Guilds gateway intent; privileged intents are not required by its code.
 3. Enable Discord Developer Mode, copy the target server ID, and set `GUILD_ID`.
 4. Register commands:
 

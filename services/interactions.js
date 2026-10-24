@@ -1,8 +1,14 @@
 const { MessageFlags } = require('discord.js');
+const { weatherNavigation } = require('./weather-navigation');
 
 async function handleInteraction(interaction, logger = console) {
-    if (!interaction.isChatInputCommand()) return;
+    const weatherButton = interaction.isButton?.() && interaction.customId.startsWith('weather:');
+    if (!weatherButton && !interaction.isChatInputCommand()) return;
     try {
+        if (weatherButton) {
+            await weatherNavigation.handleButton(interaction);
+            return;
+        }
         const command = interaction.client.commands.get(interaction.commandName);
         if (!command) throw new Error('Unknown command: ' + interaction.commandName);
         await command.execute(interaction);
@@ -11,7 +17,8 @@ async function handleInteraction(interaction, logger = console) {
         logger.error(error);
         try {
             const content = 'There was an error while executing this command!';
-            if (interaction.deferred && !interaction.replied) await interaction.editReply({ content });
+            if (weatherButton && (interaction.deferred || interaction.replied)) await interaction.followUp({ content, flags: MessageFlags.Ephemeral });
+            else if (interaction.deferred && !interaction.replied) await interaction.editReply({ content });
             else if (interaction.replied) await interaction.followUp({ content, flags: MessageFlags.Ephemeral });
             else await interaction.reply({ content, flags: MessageFlags.Ephemeral });
         }

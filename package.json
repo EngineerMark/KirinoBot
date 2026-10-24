@@ -5,7 +5,8 @@
   "scripts": {
     "start": "node index.js",
     "lint": "eslint . --ext .js",
-    "dev": "nodemon index.js"
+    "dev": "node --watch index.js",
+    "test": "node --test"
   },
   "repository": {
     "type": "git",

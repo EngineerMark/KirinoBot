@@ -1,19 +1,21 @@
-//API systems, to handle caching and other things
+const API_CACHE = new Map();
+const MAX_CACHE_ENTRIES = 500;
 
-const API_CACHE = new Map(); // [url, { data, timestamp }]
-
-async function fetchWithCache(url, cacheDuration = 300000) { // default cache duration: 5 minutes
+async function fetchWithCache(url, cacheDuration = 300000) {
     const now = Date.now();
     const cached = API_CACHE.get(url);
-    if (cached && (now - cached.timestamp < cacheDuration)) {
-        return cached.data;
+    if (cached && now - cached.timestamp < cacheDuration) return cached.data;
+    API_CACHE.delete(url);
+
+    const response = await fetch(url, { signal: AbortSignal.timeout(15000) });
+    if (!response.ok) {
+        // Avoid logging URLs: they can contain API keys.
+        throw new Error(`API request failed with HTTP ${response.status}`);
     }
-    const response = await fetch(url);
     const data = await response.json();
-    API_CACHE.set(url, { data, timestamp: now });
+    if (API_CACHE.size >= MAX_CACHE_ENTRIES) API_CACHE.delete(API_CACHE.keys().next().value);
+    API_CACHE.set(url, { data, timestamp: Date.now() });
     return data;
 }
 
-module.exports = {
-    fetchWithCache,
-};
+module.exports = { fetchWithCache };

@@ -1,7 +1,7 @@
-const { deg2rad, rad2deg } = require('../services/helpers');
+const { deg2rad } = require('../services/helpers');
 
 class Coords {
-    //calculate distance between two coordinates in km
+    // calculate distance between two coordinates in km
     static Distance(c1, c2) {
         const R = 6371;
         const dLat = deg2rad(c2.lat - c1.lat);

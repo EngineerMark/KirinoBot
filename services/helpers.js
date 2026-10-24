@@ -1,5 +1,5 @@
 function formatNumber(num, decimals = 2) {
-    //point is to convert for example 1.2442 to 1.24..
+    // point is to convert for example 1.2442 to 1.24..
     return num.toFixed(decimals);
 }
 

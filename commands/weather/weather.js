@@ -9,20 +9,20 @@ module.exports = {
                 .setDescription('The location to get the weather for')
                 .setRequired(true))
         .addStringOption(option =>
-            option.setName("mode")
-                .setDescription("The mode to display the weather in.")
+            option.setName('mode')
+                .setDescription('The mode to display the weather in.')
                 .addChoices(
-                    { name: "Normal", value: "normal" },
-                    { name: "Alerts", value: "alerts" },
-                    { name: "Forecast", value: "forecast" },
-                    { name: "Air Quality", value: "airquality" },
-                    { name: "Lightning", value: "lightning" }
+                    { name: 'Normal', value: 'normal' },
+                    { name: 'Alerts', value: 'alerts' },
+                    { name: 'Forecast', value: 'forecast' },
+                    { name: 'Air Quality', value: 'airquality' },
+                    { name: 'Lightning', value: 'lightning' },
                 )),
     async execute(interaction) {
         await interaction.deferReply();
 
         const location = interaction.options.getString('location');
-        const mode = interaction.options.getString('mode') || "normal";
+        const mode = interaction.options.getString('mode') || 'normal';
         // const locData = await getLocation(location);
 
         try {
@@ -33,17 +33,26 @@ module.exports = {
             }
 
             const weather = await getWeather(locData.lat, locData.lon);
-            const airQuality = await getAirQuality(locData.lat, locData.lon);
-            const lightning = await getLightningData();
-            const airStability = await getAirStability(locData.lat, locData.lon);
+            const optional = async (request) => {
+                try { return await request(); }
+                catch (error) { console.error('Optional weather feed failed:', error); return null; }
+            };
+            const [airQuality, lightning, airStability] = await Promise.all([
+                ['normal', 'airquality'].includes(mode)
+                    ? (mode === 'airquality' ? getAirQuality(locData.lat, locData.lon) : optional(() => getAirQuality(locData.lat, locData.lon))) : null,
+                ['normal', 'lightning'].includes(mode) ? optional(getLightningData) : null,
+                mode === 'lightning' ? optional(() => getAirStability(locData.lat, locData.lon)) : null,
+            ]);
 
             if (weather) {
                 const embed = getWeatherEmbed(locData, weather, airQuality, lightning, airStability, mode);
                 await interaction.editReply({ embeds: [embed] });
-            } else {
+            }
+            else {
                 await interaction.editReply(`Could not find weather information for '${location}'`);
             }
-        } catch (error) {
+        }
+        catch (error) {
             console.error(error);
             await interaction.editReply(`An error occurred while fetching the weather for ${location}.`);
         }

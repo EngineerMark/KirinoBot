@@ -26,7 +26,7 @@ function drawLightning(lightning, location, top, now = Date.now()) {
     const maximum = Math.max(4, ...buckets.map(bucket => bucket.count));
     const step = Math.ceil(maximum / 4);
     const limit = step * 4;
-    const x = index => 99 + index * 48;
+    const x = index => 76 + (index + 0.5) * 570 / BUCKETS;
     const countY = value => 201 - value / limit * 128;
     const distanceY = value => 201 - value / 100 * 128;
     let svg = `<g transform="translate(0 ${top})"><rect x="24" width="672" height="${height - 8}" rx="14" fill="#202e46"/>
@@ -35,7 +35,7 @@ function drawLightning(lightning, location, top, now = Date.now()) {
 <path d="M272 49h22" stroke="#8cd9ee" stroke-width="3"/><text x="302" y="54" fill="#8cd9ee" font-size="13">Nearest strike (km)</text>`;
     for (let tick = 0; tick <= 4; tick++) {
         const y = countY(tick * step);
-        svg += `<path d="M76 ${y}H662" stroke="#40506a" stroke-dasharray="3 5"/><text x="65" y="${y + 5}" fill="#ffad9b" font-size="13" text-anchor="end">${tick * step}</text><text x="671" y="${y + 5}" fill="#8cd9ee" font-size="12">${tick * 25}</text>`;
+        svg += `<path d="M76 ${y}H646" stroke="#40506a" stroke-dasharray="3 5"/><text x="65" y="${y + 5}" fill="#ffad9b" font-size="13" text-anchor="end">${tick * step}</text><text x="678" y="${y + 5}" text-anchor="end" fill="#8cd9ee" font-size="12">${tick * 25}</text>`;
     }
     let path = '';
     let previous = false;
@@ -50,7 +50,7 @@ function drawLightning(lightning, location, top, now = Date.now()) {
         else { previous = false; }
     });
     svg += `<path data-series="nearest" d="${path}" fill="none" stroke="#8cd9ee" stroke-width="2.5"/>`;
-    for (const [position, label] of [[76, '2h ago'], [220, '90m'], [364, '60m'], [508, '30m'], [652, 'Now']]) {
+    for (const [position, label] of [[76, '2h ago'], [218.5, '90m'], [361, '60m'], [503.5, '30m'], [646, 'Now']]) {
         svg += `<text x="${position}" y="230" text-anchor="middle" fill="#a9bad1" font-size="13">${label}</text>`;
     }
     svg += '</g>';

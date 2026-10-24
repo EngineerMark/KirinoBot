@@ -94,17 +94,17 @@ function drawAlertSymbols(weather, top, { textLines }, now = Date.now()) {
         const duration = remaining < 3600000 ? `${Math.max(1, Math.ceil(remaining / 60000))}m` : remaining < 86400000 ? `${Math.ceil(remaining / 3600000)}h` : `${Math.ceil(remaining / 86400000)}d`;
         const timing = status === 'Active' ? `${duration} left` : status === 'Upcoming' ? `In ${duration}` : status === 'Expired' ? 'Ended' : 'Time ?';
         const x = 24 + index * 94;
-        svg += `<rect x="${x}" width="84" height="76" rx="14" fill="#202e46"/>
-<circle cx="${x + 42}" cy="26" r="20" fill="#101e32" stroke="${severity.color}" stroke-opacity="0.5"/>
-${drawIcon(alertIcon(alert), x + 29, 13, severity.color, 26)}
-${textLines([timing], x + 12, 65, 11, severity.color)}`;
+        svg += `<rect x="${x}" width="84" height="64" rx="14" fill="#202e46"/>
+<circle cx="${x + 42}" cy="23" r="17" fill="#101e32" stroke="${severity.color}" stroke-opacity="0.5"/>
+${drawIcon(alertIcon(alert), x + 30, 11, severity.color, 24)}
+<g text-anchor="middle">${textLines([timing], x + 42, 55, 11, severity.color)}</g>`;
         summary.push(`${alert.event}: ${severity.label}, ${status}, ${timing}`);
     });
     if (shown.length < alerts.length) {
-        svg += `<rect x="588" width="84" height="76" rx="14" fill="#202e46"/>${textLines([`+${alerts.length - shown.length}`], 608, 46, 22, '#a9bad1', 600)}`;
+        svg += `<rect x="588" width="84" height="64" rx="14" fill="#202e46"/><g text-anchor="middle">${textLines([`+${alerts.length - shown.length}`], 630, 40, 22, '#a9bad1', 600)}</g>`;
     }
     svg += '</g>';
-    return { svg, height: 88, summary: summary.join('\n') };
+    return { svg, height: 76, summary: summary.join('\n') };
 }
 
 module.exports = { drawAlerts, drawAlertSymbols, alertSeverity, alertStatus, alertIcon };

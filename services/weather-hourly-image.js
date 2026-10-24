@@ -17,21 +17,21 @@ function drawHourly(weather, top) {
     const maximum = Math.ceil(Math.max(...values)) + 1;
     const start = hours[0].dt;
     const end = hours[hours.length - 1].dt;
-    const x = time => 88 + (time - start) / (end - start) * 552;
+    const x = time => 88 + (time - start) / (end - start) * 544;
     const y = value => 97 - (value - minimum) / (maximum - minimum) * 52;
     const validChance = value => Number.isFinite(value) && value >= 0 && value <= 1;
     const hasChance = hours.some(hour => validChance(hour.pop));
     const offset = Number.isFinite(weather.timezone_offset) ? weather.timezone_offset : 0;
     let svg = `<g transform="translate(0 ${top})"><rect x="24" width="672" height="136" rx="14" fill="#202e46"/>
-<text x="42" y="26" fill="#f0f4fc" font-size="16" font-weight="600">Hourly temperature · °C${Number.isFinite(weather.timezone_offset) ? '' : ' · UTC'}</text>
+<text x="42" y="26" fill="#ffad9b" font-size="16" font-weight="600">Hourly temperature · °C${Number.isFinite(weather.timezone_offset) ? '' : ' · UTC'}</text>
 ${hasChance ? '<rect x="370" y="16" width="10" height="11" rx="2" fill="#8cd9ee" opacity="0.65"/><text x="388" y="26" fill="#8cd9ee" font-size="12">Precip. chance</text>' : ''}
 <text x="650" y="26" text-anchor="end" fill="#ffad9b" font-size="13">${Number(Math.min(...values).toFixed(1))}° – ${Number(Math.max(...values).toFixed(1))}°</text>`;
     for (const value of [minimum, maximum]) {
-        svg += `<path d="M76 ${y(value)}H660" stroke="#40506a" stroke-dasharray="3 5"/><text x="65" y="${y(value) + 4}" text-anchor="end" fill="#a9bad1" font-size="12">${value}°</text>`;
+        svg += `<path d="M76 ${y(value)}H646" stroke="#40506a" stroke-dasharray="3 5"/><text x="65" y="${y(value) + 4}" text-anchor="end" fill="#ffad9b" font-size="12">${value}°</text>`;
     }
     if (hasChance) {
         for (const [value, label] of [[0, '0%'], [0.5, '50%'], [1, '100%']]) {
-            svg += `<text x="668" y="${101 - value * 52}" fill="#8cd9ee" font-size="10">${label}</text>`;
+            svg += `<text x="678" y="${101 - value * 52}" text-anchor="end" fill="#8cd9ee" font-size="10">${label}</text>`;
         }
         hours.forEach(hour => {
             if (validChance(hour.pop)) {
@@ -59,7 +59,11 @@ ${hasChance ? '<rect x="370" y="16" width="10" height="11" rx="2" fill="#8cd9ee"
         else { flush(); }
     });
     flush();
-    const labelIndices = new Set([0, Math.round((hours.length - 1) / 4), Math.round((hours.length - 1) / 2), Math.round((hours.length - 1) * 3 / 4), hours.length - 1]);
+    const labelIndices = [0];
+    for (let index = 1; index < hours.length - 1; index++) {
+        if (x(hours[index].dt) - x(hours[labelIndices[labelIndices.length - 1]].dt) >= 90 && x(end) - x(hours[index].dt) >= 90) labelIndices.push(index);
+    }
+    labelIndices.push(hours.length - 1);
     labelIndices.forEach(index => {
         const hour = hours[index];
         const label = new Date((hour.dt + offset) * 1000).toISOString().slice(11, 16);

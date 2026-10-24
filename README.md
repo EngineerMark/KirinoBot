@@ -70,6 +70,8 @@ Tests mock HTTP and Discord operations; they do not log in, publish commands, va
 
 ## Weather data and missing values
 
+Weather images use bundled DejaVu Sans fonts and measured text wrapping for consistent layout across hosts. To review all five modes plus long-title and missing-data cases without contacting providers, run `node scripts/render-weather-samples.js <output-directory>`. This writes ten synthetic PNG samples and an `overview.png` contact sheet. Each individual card remains within 720 × 960 pixels; previews do not establish live Discord rendering.
+
 Main weather images include a compact hourly temperature graph below current conditions when hourly data is available: up to 13 readings across the next 12 hours, a coral temperature line, subtle cyan precipitation-chance bars on a separate 0–100% scale, and local-time labels (UTC when the offset is missing). Invalid temperatures and missing hours break the line. Precipitation probabilities are validated as 0–1 and displayed as percentages; missing values show a small question mark rather than a zero bar. If no probabilities are available, the graph stays temperature-only without changing its height. Metric panels use a denser layout while retaining their severity labels and wind compass, keeping the image within 720 × 960 pixels. No additional API call is needed; hourly data comes from the existing One Call response.
 
 Weather image headings include a country flag directly after the location name, using local `flag-icons` SVG assets when the location has a supported two-letter country code. Flags do not depend on emoji fonts or remote image requests; missing or unsupported codes simply omit the flag.

@@ -7,6 +7,7 @@ const { drawAirQuality } = require('./weather-airquality-image');
 const { drawAlerts, drawAlertSymbols } = require('./weather-alerts-image');
 const { drawImageTitle } = require('./weather-image-title');
 const { drawHourly } = require('./weather-hourly-image');
+const { wrapText, measureText, ensureFonts } = require('./weather-image-layout');
 
 // Render the same presentation data as embeds, without fetching remote assets.
 const WIDTH = 720;
@@ -25,26 +26,22 @@ function escapeXml(value) {
 }
 
 function wrap(value, columns) {
-    const lines = [];
-    for (const paragraph of plainText(value).split('\n')) {
-        let line = '';
-        for (const word of paragraph.split(/\s+/)) {
-            for (let start = 0; start < word.length; start += columns) {
-                const part = word.slice(start, start + columns);
-                if (line && line.length + part.length + 1 > columns) {
-                    lines.push(line);
-                    line = '';
-                }
-                line += (line ? ' ' : '') + part;
-            }
-        }
-        if (line) lines.push(line);
-    }
-    return lines;
+    return wrapText(plainText(value), columns * 9.5);
 }
 
 function textLines(lines, x, y, size, color, weight = 400) {
     return lines.map((line, index) => `<text x="${x}" y="${y + index * (size + 8)}" font-size="${size}" fill="${color}" font-weight="${weight}">${escapeXml(line)}</text>`).join('');
+}
+
+function imageValue(field) {
+    let value = plainText(field.value)
+        .replace(/(?:Unavailable|N\/A)(?:°[CF]|%| (?:km\/h|mph|hPa|km|miles|J\/kg))?/g, 'Unavailable')
+        .replace(/Unavailable\s*\/\s*Unavailable/g, 'Unavailable')
+        .replace(/Unavailable \(AQI: Unavailable\)/g, 'Unavailable');
+    if (field.name === 'Wind') value = value.replace(/ from .*/, '');
+    if (field.name === 'Nearby Lightning Strikes' && value.startsWith('Unavailable')) value = 'Unavailable';
+    if (field.name === 'Conditions') value = value.replace(/Unavailable at Unavailable/g, 'Unavailable');
+    return value;
 }
 
 function buildWeatherSvg(embed, mode = 'normal', context = {}) {
@@ -104,18 +101,19 @@ function buildWeatherSvg(embed, mode = 'normal', context = {}) {
         const columns = pair ? 25 : 59;
         const prepared = row.map(item => ({
             labels: wrap(item.name, pair ? 21 : 49),
-            values: wrap(item.name === 'Wind' ? plainText(item.value).replace(/ from .*/, '') : item.value, item.name === 'Wind' && pair ? 19 : columns),
+            values: wrap(imageValue(item), item.name === 'Wind' && pair ? 19 : columns),
             compass: item.name === 'Wind',
             ...weatherVisual(item, context, mode),
         }));
         const labels = prepared.flatMap(item => item.labels);
         const values = prepared.flatMap(item => item.values);
         const labelCount = Math.min(Math.max(...prepared.map(item => item.labels.length)), 2);
-        const valueCount = Math.min(Math.max(...prepared.map(item => Math.max(item.values.length, item.compass ? 3 : 0))), mode === 'alerts' ? 5 : 4);
+        const valueCount = Math.min(Math.max(...prepared.map(item => Math.max(item.values.length, item.compass ? hourly ? 2 : 3 : 0))), mode === 'alerts' ? 5 : 4);
         const hasBadge = prepared.some(item => item.badge);
         const lineStep = hourly ? 24 : 26;
         const fontSize = hourly ? 16 : 18;
-        const height = 28 + labelCount * lineStep + valueCount * lineStep + (hasBadge ? hourly ? 26 : 36 : 0);
+        const padding = hourly ? 22 : 28;
+        const height = padding + labelCount * lineStep + valueCount * lineStep + (hasBadge ? hourly ? 26 : 36 : 0);
         if (y + height > MAX_HEIGHT - 24) {
             overflow = true;
             break;
@@ -127,13 +125,17 @@ function buildWeatherSvg(embed, mode = 'normal', context = {}) {
             const x = 24 + column * 344;
             const width = pair ? 328 : 672;
             body += `<rect x="${x}" y="${y}" width="${width}" height="${height - 8}" rx="14" fill="#202e46"/>`;
-            body += drawIcon(item.icon, x + 16, y + 11, item.badge?.color);
-            body += textLines(item.labels.slice(0, labelCount), x + 48, y + 28, fontSize, '#8cd9ee', 600);
-            body += textLines(item.values.slice(0, valueCount), x + 18, y + 28 + labelCount * lineStep, fontSize, '#f0f4fc');
-            if (item.compass) body += drawWindCompass(context.weather?.current?.wind_deg, x + width - 84, y + 10, item.badge?.color);
+            body += drawIcon(item.icon, x + 16, y + padding - 17, item.badge?.color);
+            body += textLines(item.labels.slice(0, labelCount), x + 48, y + padding, fontSize, '#8cd9ee', 600);
+            body += textLines(item.values.slice(0, valueCount), x + 18, y + padding + labelCount * lineStep, fontSize, '#f0f4fc');
+            if (item.compass) {
+                body += hourly
+                    ? `<g transform="translate(${x + width - 74} ${y + 6}) scale(0.8)">${drawWindCompass(context.weather?.current?.wind_deg, 0, 0, item.badge?.color)}</g>`
+                    : drawWindCompass(context.weather?.current?.wind_deg, x + width - 84, y + 10, item.badge?.color);
+            }
             if (item.badge) {
                 const badgeY = y + height - (hourly ? 25 : 39);
-                const badgeWidth = Math.min(width - 36, item.badge.label.length * 7.5 + 20);
+                const badgeWidth = Math.min(width - 36, measureText(item.badge.label, 13, true) + 20);
                 body += `<rect x="${x + 18}" y="${badgeY - 15}" width="${badgeWidth}" height="24" rx="12" fill="#101e32"/>`;
                 body += textLines([item.badge.label], x + 28, badgeY + 2, 13, item.badge.color, 600);
                 // A segmented meter expresses the measured level, not warning severity.
@@ -167,6 +169,7 @@ async function getWeatherImage(embed, mode, context) {
     if (activeRenders >= 2) throw new Error('Weather image renderer is busy');
     activeRenders++;
     try {
+        await ensureFonts();
         const { svg, fullText } = buildWeatherSvg(embed, mode, context);
         const buffer = await sharp(Buffer.from(svg)).png({ compressionLevel: 9, palette: true }).toBuffer();
         if (buffer.length > 1024 * 1024) throw new Error('Weather image exceeded size budget');

@@ -32,7 +32,7 @@ function drawAirQuality(data, top) {
     svg += `<rect x="24" y="154" width="672" height="448" rx="14" fill="#202e46"/>
 <text x="42" y="184" fill="#f0f4fc" font-size="18" font-weight="600">Pollutant severity</text>
 <text x="42" y="209" fill="#a9bad1" font-size="13">Each pollutant uses its own concentration bands.</text>
-<text x="326" y="235" fill="#a9bad1" font-size="12">1</text><text x="376" y="235" fill="#a9bad1" font-size="12">2</text><text x="426" y="235" fill="#a9bad1" font-size="12">3</text><text x="476" y="235" fill="#a9bad1" font-size="12">4</text><text x="526" y="235" fill="#a9bad1" font-size="12">5</text>`;
+<g text-anchor="middle"><text x="332" y="235" fill="#a9bad1" font-size="12">1</text><text x="382" y="235" fill="#a9bad1" font-size="12">2</text><text x="432" y="235" fill="#a9bad1" font-size="12">3</text><text x="482" y="235" fill="#a9bad1" font-size="12">4</text><text x="532" y="235" fill="#a9bad1" font-size="12">5</text></g>`;
     const summary = [`OpenWeather AQI: ${aqi}/5, ${LABELS[aqi - 1]}`];
     Object.keys(BANDS).forEach((key, index) => {
         const value = components[key];

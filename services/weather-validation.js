@@ -42,6 +42,10 @@ function weatherResponse(data) {
     })) : null;
     return {
         current, daily, alerts,
+        hourly: Array.isArray(data.hourly) ? data.hourly.slice(0, 168).map(hour => ({
+            dt: timestamp(hour?.dt) ? hour.dt : NaN, temp: finite(hour?.temp),
+            pop: Number.isFinite(hour?.pop) && hour.pop >= 0 && hour.pop <= 1 ? hour.pop : NaN,
+        })) : [],
         invalidAlerts: (Number.isInteger(data.invalidAlerts) && data.invalidAlerts >= 0 ? data.invalidAlerts : 0) || (Array.isArray(data.alerts) ? data.alerts.filter(alert => !object(alert)).length : 0),
         timezone_offset: Number.isFinite(data.timezone_offset) && Math.abs(data.timezone_offset) <= 86400 ? data.timezone_offset : NaN,
     };

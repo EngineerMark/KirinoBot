@@ -10,6 +10,7 @@ const { drawAirQuality, pollutantRating, BANDS } = require('../services/weather-
 const { alertSeverity, alertStatus, alertIcon } = require('../services/weather-alerts-image');
 const { weatherResponse } = require('../services/weather-validation');
 const { countryFlag } = require('../services/weather-country-flag');
+const { hourlyTemperatures, drawHourly } = require('../services/weather-hourly-image');
 
 const location = { name: 'Amsterdam', country: 'NL', lat: 52, lon: 5 };
 const weather = {
@@ -42,6 +43,55 @@ test('wind labels use unrounded measurements at Beaufort boundaries', () => {
         assert.ok(badge.fraction >= 0 && badge.fraction <= 1);
     }
     for (const speed of [undefined, null, NaN, -1, '20']) assert.equal(weatherVisual({ name: 'Wind' }, { weather: { current: { wind_speed: speed } } }).badge, null);
+});
+
+test('hourly temperatures survive validation and the compact graph uses local times and missing-data gaps', async () => {
+    const start = Date.parse('2026-10-25T00:00:00Z') / 1000;
+    const raw = { ...weather, current: { ...weather.current, dt: start }, timezone_offset: 3600, hourly: Array.from({ length: 14 }, (_, index) => ({ dt: start + index * 3600, temp: index === 3 ? null : index === 4 ? '5' : index - 5 })) };
+    const input = weatherResponse(weatherResponse(raw));
+    assert.equal(input.hourly[0].temp, -5);
+    assert.ok(Number.isNaN(input.hourly[3].temp));
+    assert.ok(Number.isNaN(input.hourly[4].temp));
+    assert.equal(hourlyTemperatures(input).length, 13);
+    const chart = drawHourly(input, 0);
+    assert.match(chart.svg, /01:00/);
+    assert.match(chart.svg, /13:00/);
+    assert.match(chart.svg, /-5°/);
+    assert.equal((chart.svg.match(/data-series="hourly"/g) || []).length, 2);
+    assert.doesNotMatch(chart.svg, /NaN|undefined|null|https?:/);
+    assert.equal(drawHourly({ hourly: [] }, 0), null);
+    assert.equal(drawHourly({ ...input, hourly: input.hourly.map(hour => ({ ...hour, temp: NaN })) }, 0), null);
+    const reply = await getWeatherImage(getWeatherEmbed(location, input), 'normal', { location, weather: input });
+    const metadata = await sharp(reply.files[0].attachment).metadata();
+    assert.equal(metadata.width, 720);
+    assert.ok(metadata.height <= 960);
+    assert.equal(reply.files.length, 1);
+    assert.ok(reply.files[0].attachment.length < 1024 * 1024);
+    const image = buildWeatherSvg(getWeatherEmbed(location, input), 'normal', { location, weather: input });
+    assert.match(image.svg, /Hourly temperature/);
+    assert.match(image.svg, /Humidity/);
+    assert.match(image.svg, /Visibility/);
+    assert.match(image.fullText, /Hourly temperatures/);
+});
+
+test('hourly precipitation uses a separate percent scale and does not turn missing probabilities into zero', () => {
+    const start = 1792886400;
+    const chances = [0, 0.5, 1, null, -0.1, 1.1, '0.2'];
+    const input = weatherResponse(weatherResponse({ current: { dt: start }, timezone_offset: 3600, hourly: chances.map((pop, index) => ({ dt: start + index * 3600, temp: 12, pop })) }));
+    assert.deepEqual(input.hourly.slice(0, 3).map(hour => hour.pop), [0, 0.5, 1]);
+    assert.ok(input.hourly.slice(3).every(hour => Number.isNaN(hour.pop)));
+    const chart = drawHourly(input, 0);
+    assert.equal(chart.height, 146);
+    assert.equal((chart.svg.match(/data-series="precipitation"/g) || []).length, 3);
+    assert.match(chart.svg, /100%/);
+    assert.match(chart.svg, /Precip\. chance/);
+    assert.match(chart.svg, /data-probability="0"[^>]+height="0"/);
+    assert.match(chart.svg, /data-probability="1"[^>]+height="52"/);
+    assert.match(chart.summary, /50%/);
+    assert.match(chart.summary, /precipitation unavailable/);
+    assert.doesNotMatch(chart.svg, /NaN|undefined/);
+    const missing = drawHourly({ ...input, hourly: input.hourly.map(hour => ({ ...hour, pop: NaN })) }, 0);
+    assert.doesNotMatch(missing.svg, /precipitation|100%|Precip\. chance/);
 });
 
 test('location flags use local SVG assets and safely omit unknown countries in every mode', async () => {

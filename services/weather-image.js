@@ -6,6 +6,7 @@ const { drawLightning } = require('./weather-lightning-image');
 const { drawAirQuality } = require('./weather-airquality-image');
 const { drawAlerts, drawAlertSymbols } = require('./weather-alerts-image');
 const { drawImageTitle } = require('./weather-image-title');
+const { drawHourly } = require('./weather-hourly-image');
 
 // Render the same presentation data as embeds, without fetching remote assets.
 const WIDTH = 720;
@@ -94,6 +95,7 @@ function buildWeatherSvg(embed, mode = 'normal', context = {}) {
         if (mode === 'lightning' && field.name === 'Recent Lightning Activity') return { ...field, value: field.value.replace(/In the last /g, '').replace(/ minutes:/g, ' min:').replace(/ strikes per minute/g, '/min').replace(/\n/g, ' · ') };
         return field;
     });
+    const hourly = mode === 'normal' ? drawHourly(context.weather, 0) : null;
     for (let index = 0; index < fields.length; index++) {
         const field = fields[index];
         // Compact metrics share a row, while forecasts and alerts retain full width.
@@ -111,7 +113,9 @@ function buildWeatherSvg(embed, mode = 'normal', context = {}) {
         const labelCount = Math.min(Math.max(...prepared.map(item => item.labels.length)), 2);
         const valueCount = Math.min(Math.max(...prepared.map(item => Math.max(item.values.length, item.compass ? 3 : 0))), mode === 'alerts' ? 5 : 4);
         const hasBadge = prepared.some(item => item.badge);
-        const height = 28 + labelCount * 26 + valueCount * 26 + (hasBadge ? 36 : 0);
+        const lineStep = hourly ? 24 : 26;
+        const fontSize = hourly ? 16 : 18;
+        const height = 28 + labelCount * lineStep + valueCount * lineStep + (hasBadge ? hourly ? 26 : 36 : 0);
         if (y + height > MAX_HEIGHT - 24) {
             overflow = true;
             break;
@@ -124,16 +128,16 @@ function buildWeatherSvg(embed, mode = 'normal', context = {}) {
             const width = pair ? 328 : 672;
             body += `<rect x="${x}" y="${y}" width="${width}" height="${height - 8}" rx="14" fill="#202e46"/>`;
             body += drawIcon(item.icon, x + 16, y + 11, item.badge?.color);
-            body += textLines(item.labels.slice(0, labelCount), x + 48, y + 28, 18, '#8cd9ee', 600);
-            body += textLines(item.values.slice(0, valueCount), x + 18, y + 28 + labelCount * 26, 18, '#f0f4fc');
+            body += textLines(item.labels.slice(0, labelCount), x + 48, y + 28, fontSize, '#8cd9ee', 600);
+            body += textLines(item.values.slice(0, valueCount), x + 18, y + 28 + labelCount * lineStep, fontSize, '#f0f4fc');
             if (item.compass) body += drawWindCompass(context.weather?.current?.wind_deg, x + width - 84, y + 10, item.badge?.color);
             if (item.badge) {
-                const badgeY = y + height - 39;
+                const badgeY = y + height - (hourly ? 25 : 39);
                 const badgeWidth = Math.min(width - 36, item.badge.label.length * 7.5 + 20);
                 body += `<rect x="${x + 18}" y="${badgeY - 15}" width="${badgeWidth}" height="24" rx="12" fill="#101e32"/>`;
                 body += textLines([item.badge.label], x + 28, badgeY + 2, 13, item.badge.color, 600);
                 // A segmented meter expresses the measured level, not warning severity.
-                for (let segment = 0; segment < 12; segment++) {
+                for (let segment = 0; segment < (hourly ? 0 : 12); segment++) {
                     const segmentWidth = (width - 47) / 12;
                     const filled = segment < Math.round(item.badge.fraction * 12);
                     body += `<rect x="${x + 18 + segment * (segmentWidth + 1)}" y="${y + height - 17}" width="${segmentWidth}" height="3" rx="1" fill="${filled ? item.badge.color : '#3a4860'}"/>`;
@@ -141,6 +145,11 @@ function buildWeatherSvg(embed, mode = 'normal', context = {}) {
             }
         }
         y += height;
+        if (hourly && field.name === 'Conditions') {
+            body += `<g transform="translate(0 ${y})">${hourly.svg}</g>`;
+            y += hourly.height;
+            fullText = [plainText(data.title), hourly.summary, fullText].join('\n\n');
+        }
     }
     if (data.footer?.text) overflow = true;
     const height = Math.min(MAX_HEIGHT, Math.max(240, y + 16));

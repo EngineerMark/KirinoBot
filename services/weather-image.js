@@ -3,6 +3,7 @@ const { AttachmentBuilder } = require('discord.js');
 const { weatherVisual, drawIcon, drawWindCompass } = require('./weather-visuals');
 const { drawForecast } = require('./weather-forecast-image');
 const { drawLightning } = require('./weather-lightning-image');
+const { drawAirQuality } = require('./weather-airquality-image');
 
 // Render the same presentation data as embeds, without fetching remote assets.
 const WIDTH = 720;
@@ -45,7 +46,7 @@ function textLines(lines, x, y, size, color, weight = 400) {
 
 function buildWeatherSvg(embed, mode = 'normal', context = {}) {
     const data = typeof embed.toJSON === 'function' ? embed.toJSON() : embed;
-    const fullText = [plainText(data.title), plainText(data.description), ...(data.fields || []).map(field => `${plainText(field.name)}\n${plainText(field.value)}${weatherVisual(field, context, mode).badge ? '\n' + weatherVisual(field, context, mode).badge.label : ''}`), plainText(data.footer?.text), 'Display bands are descriptive, not official warnings. Wind labels use the Beaufort scale.'].filter(Boolean).join('\n\n');
+    let fullText = [plainText(data.title), plainText(data.description), ...(data.fields || []).map(field => `${plainText(field.name)}\n${plainText(field.value)}${weatherVisual(field, context, mode).badge ? '\n' + weatherVisual(field, context, mode).badge.label : ''}`), plainText(data.footer?.text), 'Display bands are descriptive, not official warnings. Wind labels use the Beaufort scale.'].filter(Boolean).join('\n\n');
     const title = wrap(data.title, 36);
     let overflow = title.length > 2;
     let y = 76 + Math.min(title.length, 2) * 38;
@@ -67,7 +68,13 @@ function buildWeatherSvg(embed, mode = 'normal', context = {}) {
         body += lightning.svg;
         y += lightning.height;
     }
-    const fields = (forecast ? [] : data.fields || []).map(field => {
+    const airQuality = mode === 'airquality' ? drawAirQuality(context.airQuality, y) : null;
+    if (airQuality) {
+        body += airQuality.svg;
+        y += airQuality.height;
+        fullText = [plainText(data.title), airQuality.summary, fullText].join('\n\n');
+    }
+    const fields = (forecast || airQuality ? [] : data.fields || []).map(field => {
         if (mode === 'normal' && field.name === 'Wind') return { ...field, inline: true };
         if (mode === 'lightning' && field.name === 'Lightning Activity') return { ...field, value: field.value.replace(/\n/g, ' · ') };
         if (mode === 'lightning' && field.name === 'Recent Lightning Activity') return { ...field, value: field.value.replace(/In the last /g, '').replace(/ minutes:/g, ' min:').replace(/ strikes per minute/g, '/min').replace(/\n/g, ' · ') };

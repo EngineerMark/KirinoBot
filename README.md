@@ -70,6 +70,8 @@ Tests mock HTTP and Discord operations; they do not log in, publish commands, va
 
 ## Weather data and missing values
 
+Air-quality images include an overall OpenWeather 1–5 rating and a horizontal severity chart for PM2.5, PM10, NO₂, O₃, SO₂, and CO, alongside their concentrations in µg/m³. Chart lengths represent severity categories, not comparable raw concentrations. Ratings use [OpenWeather's pollutant-specific boundaries](https://openweathermap.org/api/air-pollution), including the lower boundary in each higher category. NO and NH₃ are displayed as ungraded additional readings; missing concentrations are unavailable rather than rated as good. These are OpenWeather categories, not US EPA AQI values.
+
 Lightning image output includes a local chart of strikes within 100 km over the last two hours, with coral bars for 10-minute counts and a cyan line for the nearest strike in each interval. The axes use matching colors, and empty intervals break the distance line. Future, older, and distant strikes are excluded. When no lightning feed is available the chart is omitted; a successfully fetched empty feed produces a zero-activity chart.
 
 Forecast image output includes a locally rendered temperature graph with coral highs, cyan lows, a shaded range, local dates, and seven compact daily rows with weather icons and precipitation probability. It uses the next seven daily entries (excluding today), leaves gaps for missing temperatures, and stays within the existing image size limits. No external chart image is fetched for image output.

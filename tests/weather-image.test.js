@@ -6,6 +6,7 @@ const { getWeatherImage, buildWeatherSvg } = require('../services/weather-image'
 const { weatherVisual, drawWindCompass } = require('../services/weather-visuals');
 const { drawForecast, forecastDays } = require('../services/weather-forecast-image');
 const { lightningBuckets, drawLightning } = require('../services/weather-lightning-image');
+const { drawAirQuality, pollutantRating, BANDS } = require('../services/weather-airquality-image');
 
 const location = { name: 'Amsterdam', country: 'NL', lat: 52, lon: 5 };
 const weather = {
@@ -38,6 +39,38 @@ test('wind labels use unrounded measurements at Beaufort boundaries', () => {
         assert.ok(badge.fraction >= 0 && badge.fraction <= 1);
     }
     for (const speed of [undefined, null, NaN, -1, '20']) assert.equal(weatherVisual({ name: 'Wind' }, { weather: { current: { wind_speed: speed } } }).badge, null);
+});
+
+test('air pollutant ratings use inclusive provider boundaries and leave ungraded readings alone', () => {
+    for (const [key, limits] of Object.entries(BANDS)) {
+        assert.equal(pollutantRating(key, 0), 1);
+        limits.forEach((limit, index) => {
+            assert.equal(pollutantRating(key, limit - 0.001), index + 1);
+            assert.equal(pollutantRating(key, limit), index + 2);
+        });
+        for (const invalid of [null, undefined, NaN, -1, '20']) assert.equal(pollutantRating(key, invalid), null);
+    }
+    assert.equal(pollutantRating('no', 100), null);
+    assert.equal(pollutantRating('nh3', 100), null);
+    assert.equal(drawAirQuality(null, 0), null);
+});
+
+test('air quality chart preserves missing readings and produces a single compact themed image', async () => {
+    const airQuality = { list: [{ main: { aqi: 4 }, components: { pm2_5: 55, pm10: 110, co: 0, o3: 110, no2: null, so2: 5, no: 2, nh3: 3 } }] };
+    const chart = drawAirQuality(airQuality, 0);
+    assert.match(chart.svg, /Poor · 4\/5/);
+    assert.match(chart.svg, /Unavailable/);
+    assert.match(chart.svg, /not rated on this scale/);
+    assert.match(chart.summary, /CO: 0 µg\/m³, 1\/5 Good/);
+    assert.doesNotMatch(chart.svg, /NaN|undefined|https?:/);
+    const embed = getWeatherEmbed(location, weather, airQuality, null, null, 'airquality');
+    const reply = await getWeatherImage(embed, 'airquality', { weather, airQuality });
+    assert.equal(reply.files.length, 1);
+    const metadata = await sharp(reply.files[0].attachment).metadata();
+    assert.equal(metadata.width, 720);
+    assert.ok(metadata.height <= 960);
+    assert.ok(reply.files[0].attachment.length < 1024 * 1024);
+    assert.match(reply.files[0].description, /PM2.5: 55 µg\/m³, 4\/5 Poor/);
 });
 
 test('lightning graph buckets the last two hours and excludes distant, future and invalid strikes', async () => {

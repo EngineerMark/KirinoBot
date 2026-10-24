@@ -36,7 +36,7 @@ function weatherResponse(data) {
         pop: Number.isFinite(day?.pop) && day.pop >= 0 && day.pop <= 1 ? day.pop : NaN, weather: conditions(day?.weather),
     })) : [];
     const alerts = data.alerts === undefined ? [] : Array.isArray(data.alerts) ? data.alerts.filter(object).map(alert => ({
-        event: text(alert.event), description: text(alert.description),
+        event: text(alert.event), description: text(alert.description), sender_name: text(alert.sender_name),
         start: timestamp(alert.start) ? alert.start : null, end: timestamp(alert.end) ? alert.end : null,
         tags: Array.isArray(alert.tags) ? alert.tags.filter(tag => typeof tag === 'string') : [],
     })) : null;

@@ -87,6 +87,10 @@ function conditionIcon(description = '') {
 }
 
 const PATHS = {
+    flood: '<path d="M2 15q3-4 6 0t6 0 8 0M2 21q3-4 6 0t6 0 8 0M4 10l8-8 8 8M7 8v5m10-5v5"/>',
+    fire: '<path d="M12 2c2 7-5 7-2 12 2-1 4-4 4-7 9 8 6 15-2 15S2 15 6 10c0 4 2 5 3 4-3-6 3-7 3-12Z"/>',
+    tornado: '<path d="M2 3h20M4 7h16M6 11h12M8 15h8M10 19h5l-4 4"/>',
+    shield: '<path d="m12 2 9 4v6c0 5-9 10-9 10S3 17 3 12V6Z"/><path d="m7 12 3 3 7-7"/>',
     cloud: '<path d="M6 18h12a4 4 0 0 0 0-8 6 6 0 0 0-11-2 5 5 0 0 0-1 10Z"/>',
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 1v3m0 16v3M1 12h3m16 0h3M4 4l2 2m12 12 2 2M4 20l2-2M18 6l2-2"/>',
     wind: '<path d="M2 8h13a3 3 0 1 0-3-3M2 12h18a3 3 0 1 0-3-3M2 16h10a3 3 0 1 1-3 3"/>',

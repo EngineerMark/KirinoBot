@@ -7,6 +7,8 @@ const { weatherVisual, drawWindCompass } = require('../services/weather-visuals'
 const { drawForecast, forecastDays } = require('../services/weather-forecast-image');
 const { lightningBuckets, drawLightning } = require('../services/weather-lightning-image');
 const { drawAirQuality, pollutantRating, BANDS } = require('../services/weather-airquality-image');
+const { alertSeverity, alertStatus, alertIcon } = require('../services/weather-alerts-image');
+const { weatherResponse } = require('../services/weather-validation');
 
 const location = { name: 'Amsterdam', country: 'NL', lat: 52, lon: 5 };
 const weather = {
@@ -39,6 +41,38 @@ test('wind labels use unrounded measurements at Beaufort boundaries', () => {
         assert.ok(badge.fraction >= 0 && badge.fraction <= 1);
     }
     for (const speed of [undefined, null, NaN, -1, '20']) assert.equal(weatherVisual({ name: 'Wind' }, { weather: { current: { wind_speed: speed } } }).badge, null);
+});
+
+test('alert badges reflect explicit title labels, without guessing severity from hazard text', () => {
+    for (const [event, label] of [['Red warning of wind', 'Red warning'], ['Orange weather alert', 'Orange alert'], ['Yellow warning', 'Yellow warning'], ['Tornado Warning', 'Warning'], ['Flood Watch', 'Watch'], ['Wind Advisory', 'Advisory'], ['Severe thunderstorm', 'Unspecified'], ['Strong winds', 'Unspecified']]) {
+        assert.equal(alertSeverity(event).label, label);
+    }
+    assert.equal(alertIcon({ event: 'Flood Watch' }), 'flood');
+    assert.equal(alertIcon({ event: 'Weather event', tags: ['Snow'] }), 'snow');
+    assert.equal(alertIcon({ event: 'Tornado Warning' }), 'tornado');
+    assert.equal(alertStatus({ start: 10, end: 20 }, 15000), 'Active');
+    assert.equal(alertStatus({ start: 10, end: 20 }, 5000), 'Upcoming');
+    assert.equal(alertStatus({ start: 10, end: 20 }, 25000), 'Expired');
+    assert.equal(alertStatus({ start: null, end: 20 }, 15000), 'Timing unknown');
+});
+
+test('themed alert cards preserve sources, escape content, and stay bounded with many long alerts', async () => {
+    const input = weatherResponse({ current: {}, timezone_offset: 3600, alerts: Array.from({ length: 20 }, () => ({ event: 'Flood Warning <test> '.repeat(20), sender_name: 'Agency & partners', start: 100, end: 200, description: 'Long description '.repeat(100) })) });
+    assert.equal(weatherResponse(input).alerts[0].sender_name, 'Agency & partners');
+    const embed = getWeatherEmbed(location, input, null, null, null, 'alerts');
+    const result = buildWeatherSvg(embed, 'alerts', { weather: input });
+    assert.match(result.svg, /Agency &amp; partners/);
+    assert.match(result.svg, /Showing 2 of 20 alerts/);
+    assert.doesNotMatch(result.svg, /<test>|weather-details|optional feeds/);
+    assert.match(result.svg, /Warning/);
+    const reply = await getWeatherImage(embed, 'alerts', { weather: input });
+    assert.equal(reply.files.length, 1);
+    assert.ok((await sharp(reply.files[0].attachment).metadata()).height <= 960);
+    const empty = buildWeatherSvg({ title: 'Alerts' }, 'alerts', { weather: { alerts: [] } });
+    assert.match(empty.svg, /No weather alerts reported/);
+    const missing = buildWeatherSvg({ title: 'Alerts' }, 'alerts', { weather: { alerts: null } });
+    assert.match(missing.svg, /Alert status unavailable/);
+    assert.doesNotMatch(missing.svg, /No weather alerts reported/);
 });
 
 test('air pollutant ratings use inclusive provider boundaries and leave ungraded readings alone', () => {

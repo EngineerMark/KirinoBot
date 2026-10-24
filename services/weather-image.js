@@ -4,6 +4,7 @@ const { weatherVisual, drawIcon, drawWindCompass } = require('./weather-visuals'
 const { drawForecast } = require('./weather-forecast-image');
 const { drawLightning } = require('./weather-lightning-image');
 const { drawAirQuality } = require('./weather-airquality-image');
+const { drawAlerts } = require('./weather-alerts-image');
 
 // Render the same presentation data as embeds, without fetching remote assets.
 const WIDTH = 720;
@@ -74,7 +75,13 @@ function buildWeatherSvg(embed, mode = 'normal', context = {}) {
         y += airQuality.height;
         fullText = [plainText(data.title), airQuality.summary, fullText].join('\n\n');
     }
-    const fields = (forecast || airQuality ? [] : data.fields || []).map(field => {
+    const alerts = mode === 'alerts' ? drawAlerts(context.weather, y, MAX_HEIGHT - y - 24, { wrap, textLines }) : null;
+    if (alerts) {
+        body += alerts.svg;
+        y += alerts.height;
+        fullText = [plainText(data.title), alerts.summary, fullText].join('\n\n');
+    }
+    const fields = (forecast || airQuality || alerts ? [] : data.fields || []).map(field => {
         if (mode === 'normal' && field.name === 'Wind') return { ...field, inline: true };
         if (mode === 'lightning' && field.name === 'Lightning Activity') return { ...field, value: field.value.replace(/\n/g, ' · ') };
         if (mode === 'lightning' && field.name === 'Recent Lightning Activity') return { ...field, value: field.value.replace(/In the last /g, '').replace(/ minutes:/g, ' min:').replace(/ strikes per minute/g, '/min').replace(/\n/g, ' · ') };

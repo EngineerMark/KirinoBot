@@ -39,7 +39,7 @@ module.exports = {
             };
             const [airQuality, lightning, airStability] = await Promise.all([
                 ['normal', 'airquality'].includes(mode)
-                    ? (mode === 'airquality' ? getAirQuality(locData.lat, locData.lon) : optional(() => getAirQuality(locData.lat, locData.lon))) : null,
+                    ? optional(() => getAirQuality(locData.lat, locData.lon)) : null,
                 ['normal', 'lightning'].includes(mode) ? optional(getLightningData) : null,
                 mode === 'lightning' ? optional(() => getAirStability(locData.lat, locData.lon)) : null,
             ]);

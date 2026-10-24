@@ -1,6 +1,6 @@
 function formatNumber(num, decimals = 2) {
     // point is to convert for example 1.2442 to 1.24..
-    return num.toFixed(decimals);
+    return Number.isFinite(num) ? num.toFixed(decimals) : 'Unavailable';
 }
 
 function deg2rad(deg) {

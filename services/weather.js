@@ -1,3 +1,4 @@
+const { locationResponse, weatherResponse, airQualityResponse, stabilityResponse, lightningResponse } = require('./weather-validation');
 const { WeatherEmbedBuilder, truncate } = require('./weather-embed');
 const { fetchWithCache } = require('./api');
 const { formatNumber } = require('./helpers');
@@ -19,8 +20,7 @@ async function getLocation(location) {
     const url = ENDPOINTS.location
         .replace('{query}', encodeURIComponent(location))
         .replace('{apiKey}', process.env.OPENWEATHERMAP_API_KEY);
-    const data = await fetchWithCache(url);
-    return data.length > 0 ? data[0] : null;
+    return fetchWithCache(url, 300000, locationResponse);
 }
 
 async function getWeather(lat, lon) {
@@ -28,51 +28,34 @@ async function getWeather(lat, lon) {
         .replace('{lat}', lat)
         .replace('{lon}', lon)
         .replace('{apiKey}', process.env.OPENWEATHERMAP_API_KEY);
-    const data = await fetchWithCache(url);
+    const data = await fetchWithCache(url, 300000, weatherResponse);
     return data;
 }
 
 async function getLightningData() {
-    const aggregatedResponse = [];
-    let successfulRequests = 0;
-
-    await Promise.all(Array.from({ length: 24 }, async (_, i) => {
-        const index = i < 10 ? `0${i}` : i;
+    const results = await Promise.all(Array.from({ length: 24 }, async (_, i) => {
         try {
-            const response = await fetchWithCache(ENDPOINTS.lightning.replace('{index}', index), 60000 * 10); // cache for 10 minutes
-            aggregatedResponse.push(...response);
-            successfulRequests++;
+            return await fetchWithCache(ENDPOINTS.lightning.replace('{index}', String(i).padStart(2, '0')), 600000, lightningResponse);
         }
-        catch (error) {
-            console.error(`Error fetching lightning data for index ${index}:`, error);
+        catch {
+            console.error(`Lightning feed ${i} unavailable.`);
+            return null;
         }
     }));
-
-    if (successfulRequests === 0) return null;
-
-    // response is actually [{0:17,1:32,2:"2026-06-10 21:05:04.431810560"}]
-    const lightningResponse = {
-        strikes: [],
+    const available = results.filter(Boolean);
+    if (!available.length) return null;
+    return {
+        strikes: available.flatMap(result => result.strikes),
+        availableFeeds: available.length, totalFeeds: 24,
+        invalidRecords: available.reduce((sum, result) => sum + result.invalidRecords, 0),
     };
-
-    for (const strike of aggregatedResponse) {
-        lightningResponse.strikes.push({
-            coord: {
-                lat: strike[1],
-                lon: strike[0],
-            },
-            time: new Date(strike[2] + ' UTC'),
-        });
-    }
-
-    return lightningResponse;
 }
 
 async function getAirStability(lat, lon) {
     const url = ENDPOINTS.airStability
         .replace('{lat}', lat.toString())
         .replace('{lon}', lon.toString());
-    const data = await fetchWithCache(url);
+    const data = await fetchWithCache(url, 300000, stabilityResponse);
     return data;
 }
 
@@ -81,18 +64,37 @@ async function getAirQuality(lat, lon) {
         .replace('{lat}', lat.toString())
         .replace('{lon}', lon.toString())
         .replace('{apiKey}', process.env.OPENWEATHERMAP_API_KEY);
-    const data = await fetchWithCache(url);
+    const data = await fetchWithCache(url, 300000, airQualityResponse);
     return data;
 }
 
 function getWeatherEmbed(location, weatherData, airQualityData, lightningData, airStabilityData, responseMode = 'normal') {
-    const currentData = weatherData.current;
+    const currentData = weatherData?.current;
     if (!currentData) {
         throw new Error('No weather data available');
     }
 
+    weatherData = weatherResponse(weatherData);
+    try { airQualityData = airQualityResponse(airQualityData); }
+    catch { airQualityData = null; }
+    try { airStabilityData = stabilityResponse(airStabilityData); }
+    catch { airStabilityData = null; }
     let embed = new WeatherEmbedBuilder();
     embed.setColor(config.botColor);
+    if (['normal', 'lightning'].includes(responseMode)) {
+        if (lightningData && (lightningData.availableFeeds < lightningData.totalFeeds || lightningData.invalidRecords > 0)) {
+            embed.setDescription(`Incomplete lightning data: ${lightningData.availableFeeds}/${lightningData.totalFeeds} feeds available; ${lightningData.invalidRecords || 0} invalid records omitted. Counts and chart reflect available data only.`);
+        }
+        else if (!lightningData) {
+            embed.setDescription('Lightning data unavailable; strike counts are unknown.');
+        }
+    }
+    if (['normal', 'alerts'].includes(responseMode) && weatherData.invalidAlerts) {
+        embed.setDescription([embed.data.description, `Incomplete weather alerts: ${weatherData.invalidAlerts} invalid records omitted.`].filter(Boolean).join('\n'));
+    }
+    if (responseMode === 'normal' && weatherData.alerts === null) {
+        embed.addFields({ name: 'Weather Alerts', value: 'Unavailable' });
+    }
 
     switch (responseMode) {
     case 'normal':
@@ -121,9 +123,9 @@ function getWeatherEmbedNormal(embed, location, weatherData, airQualityData, lig
         throw new Error('No weather data available');
     }
 
-    const localTime = new Date((currentData.dt + weatherData.timezone_offset) * 1000).toISOString().substr(11, 5);
-    embed.setTitle(`Weather in ${location.name} at ${localTime} ${countryCodeEmoji(location.country)}`);
-    embed.setThumbnail(`https://openweathermap.org/img/wn/${currentData.weather[0].icon}@2x.png`);
+    const localTime = Number.isFinite(currentData.dt + weatherData.timezone_offset) ? new Date((currentData.dt + weatherData.timezone_offset) * 1000).toISOString().slice(11, 16) : 'Unavailable';
+    embed.setTitle(`Weather in ${location.name} at ${localTime} ${(/^[A-Z]{2}$/.test(location.country) ? countryCodeEmoji(location.country) : '')}`);
+    if (currentData.weather[0].icon) embed.setThumbnail(`https://openweathermap.org/img/wn/${currentData.weather[0].icon}@2x.png`);
 
     const today = weatherData.daily ? weatherData.daily[0] : null;
 
@@ -150,7 +152,7 @@ function getWeatherEmbedNormal(embed, location, weatherData, airQualityData, lig
     embed.addFields(
         {
             name: 'Conditions',
-            value: `__**${weather.description}** at **${formatNumber(currentData.temp || 0, 1)}°C / ${formatNumber((currentData.temp || 0) * 9 / 5 + 32, 1)}°F**__\nLow: **${today ? formatNumber((today.temp)?.min, 1) : 'N/A'}°C** / **${today ? formatNumber(((today.temp)?.min || 0) * 9 / 5 + 32, 1) : 'N/A'}°F**, High: **${today ? formatNumber((today.temp)?.max, 1) : 'N/A'}°C** / **${today ? formatNumber(((today.temp)?.max || 0) * 9 / 5 + 32, 1) : 'N/A'}°F**`,
+            value: `__**${weather.description}** at **${formatNumber(currentData.temp, 1)}°C / ${formatNumber((currentData.temp) * 9 / 5 + 32, 1)}°F**__\nLow: **${today ? formatNumber((today.temp)?.min, 1) : 'N/A'}°C** / **${today ? formatNumber(((today.temp)?.min) * 9 / 5 + 32, 1) : 'N/A'}°F**, High: **${today ? formatNumber((today.temp)?.max, 1) : 'N/A'}°C** / **${today ? formatNumber(((today.temp)?.max) * 9 / 5 + 32, 1) : 'N/A'}°F**`,
             inline: false,
         },
         {
@@ -160,12 +162,12 @@ function getWeatherEmbedNormal(embed, location, weatherData, airQualityData, lig
         },
         {
             name: 'Humidity',
-            value: `**${currentData.humidity}%**`,
+            value: `**${formatNumber(currentData.humidity, 0)}%**`,
             inline: true,
         },
         {
             name: 'Cloud Coverage',
-            value: `**${currentData.clouds}%**`,
+            value: `**${formatNumber(currentData.clouds, 0)}%**`,
             inline: true,
         },
         {
@@ -175,7 +177,7 @@ function getWeatherEmbedNormal(embed, location, weatherData, airQualityData, lig
         },
         {
             name: 'Air Quality',
-            value: `**${getAirQualityDescription(airQualityData ? airQualityData.list[0].main.aqi : 0)}** (AQI: **${airQualityData ? airQualityData.list[0].main.aqi : 'N/A'}**)`,
+            value: `**${airQualityData ? getAirQualityDescription(airQualityData.list[0].main.aqi) : 'Unavailable'}** (AQI: **${airQualityData ? airQualityData.list[0].main.aqi : 'N/A'}**)`,
             inline: true,
         },
         {
@@ -195,7 +197,7 @@ function getWeatherEmbedNormal(embed, location, weatherData, airQualityData, lig
         },
         {
             name: 'Nearby Lightning Strikes',
-            value: `**${strikesInRadius}** recent strikes within **100km** / **62 miles**`,
+            value: `**${lightningData ? strikesInRadius : 'Unavailable'}** recent strikes within **100km** / **62 miles**`,
             inline: true,
         },
     );
@@ -204,7 +206,7 @@ function getWeatherEmbedNormal(embed, location, weatherData, airQualityData, lig
         let alertText = '';
         let shown = 0;
         for (const alert of weatherData.alerts) {
-            const line = truncate(`${getAlertEmoji(alert.tags?.[0] || '')} **${alert.event}** from <t:${alert.start}:R> to <t:${alert.end}:R>`, 900) + '\n';
+            const line = truncate(`${getAlertEmoji(alert.tags?.[0] || '')} **${alert.event}** from ${alertTime(alert.start)} to ${alertTime(alert.end)}`, 900) + '\n';
             const omitted = weatherData.alerts.length - shown - 1;
             const notice = omitted > 0 ? `${omitted} additional alerts omitted.` : '';
             if (alertText.length + line.length + notice.length > 1024) break;
@@ -228,12 +230,12 @@ function getWeatherEmbedAlerts(embed, location, weatherData) {
         throw new Error('No weather data available');
     }
 
-    embed.setTitle(`Weather Alerts for ${location.name} ${countryCodeEmoji(location.country)}`);
+    embed.setTitle(`Weather Alerts for ${location.name} ${(/^[A-Z]{2}$/.test(location.country) ? countryCodeEmoji(location.country) : '')}`);
 
     if (weatherData.alerts && weatherData.alerts.length > 0) {
         for (const alert of weatherData.alerts) {
-            const startTime = `<t:${alert.start}:R>`;
-            const endTime = `<t:${alert.end}:R>`;
+            const startTime = alertTime(alert.start);
+            const endTime = alertTime(alert.end);
             const alertDescription = truncate(alert.description, 1024);
             embed.addFields({
                 name: `${getAlertEmoji(alert.tags?.[0] || '')} **${alert.event}** from ${startTime} to ${endTime}`,
@@ -242,8 +244,11 @@ function getWeatherEmbedAlerts(embed, location, weatherData) {
             });
         }
     }
-    else {
-        embed.setTitle(`No weather alerts for ${location.name} ${countryCodeEmoji(location.country)}`);
+    else if (weatherData.alerts === null) {
+        embed.setDescription('Weather alert data unavailable.');
+    }
+    else if (!weatherData.invalidAlerts) {
+        embed.setTitle(`No weather alerts for ${location.name} ${(/^[A-Z]{2}$/.test(location.country) ? countryCodeEmoji(location.country) : '')}`);
     }
     return embed;
 }
@@ -254,25 +259,30 @@ function getWeatherEmbedForecast(embed, location, weatherData) {
         throw new Error('No weather data available');
     }
 
-    embed.setTitle(`Weather Forecast for ${location.name} ${countryCodeEmoji(location.country)}`);
+    embed.setTitle(`Weather Forecast for ${location.name} ${(/^[A-Z]{2}$/.test(location.country) ? countryCodeEmoji(location.country) : '')}`);
 
     if (weatherData.daily && weatherData.daily.length > 0) {
         for (let i = 1; i <= Math.min(weatherData.daily.length - 1, WEATHER_FORECAST_DAYS); i++) {
             const dayData = weatherData.daily[i];
-            const dateObject = new Date((dayData.dt + weatherData.timezone_offset) * 1000);
+            if (!Number.isFinite(dayData.dt)) continue;
+            const dateObject = new Date((dayData.dt + (Number.isFinite(weatherData.timezone_offset) ? weatherData.timezone_offset : 0)) * 1000);
             const date = dateObject.toISOString().substr(0, 10);
             const dayOfWeek = dateObject.toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' });
             const weather = dayData.weather[0];
             embed.addFields({
                 name: `${dayOfWeek} (${date}) - ${weather.description}`,
-                value: `Low: **${formatNumber((dayData.temp)?.min, 1)}°C** / **${formatNumber(((dayData.temp)?.min || 0) * 9 / 5 + 32, 1)}°F**, High: **${formatNumber((dayData.temp)?.max, 1)}°C** / **${formatNumber(((dayData.temp)?.max || 0) * 9 / 5 + 32, 1)}°F**\nPrecipitation Chance: **${formatNumber((dayData.pop || 0) * 100, 1)}%**`,
+                value: `Low: **${formatNumber((dayData.temp)?.min, 1)}°C** / **${formatNumber(((dayData.temp)?.min) * 9 / 5 + 32, 1)}°F**, High: **${formatNumber((dayData.temp)?.max, 1)}°C** / **${formatNumber(((dayData.temp)?.max) * 9 / 5 + 32, 1)}°F**\nPrecipitation Chance: **${formatNumber((dayData.pop) * 100, 1)}%**`,
                 inline: false,
             });
         }
     }
 
-    const chartUrl = getWeatherForecastChart(weatherData);
-    embed.setImage(chartUrl);
+    if (weatherData.daily.some(day => Number.isFinite(day.dt))) embed.setImage(getWeatherForecastChart(weatherData));
+    const notices = [];
+    if (weatherData.daily.some(day => !Number.isFinite(day.dt))) notices.push('Incomplete forecast: invalid forecast dates omitted.');
+    if (!Number.isFinite(weatherData.timezone_offset)) notices.push('Local timezone unavailable; forecast dates shown in UTC.');
+    if (weatherData.daily.length < 2) notices.push('Forecast data unavailable.');
+    if (notices.length) embed.setDescription(notices.join('\n'));
 
     return embed;
 }
@@ -283,7 +293,7 @@ function getWeatherEmbedAirQuality(embed, location, weatherData, airQualityData)
         throw new Error('No weather data available');
     }
 
-    embed.setTitle(`Air Quality in ${location.name} ${countryCodeEmoji(location.country)}`);
+    embed.setTitle(`Air Quality in ${location.name} ${(/^[A-Z]{2}$/.test(location.country) ? countryCodeEmoji(location.country) : '')}`);
 
     if (airQualityData) {
         const aqi = airQualityData.list[0].main.aqi;
@@ -303,6 +313,7 @@ function getWeatherEmbedAirQuality(embed, location, weatherData, airQualityData)
         }
     }
 
+    if (!airQualityData) embed.setDescription('Air quality data unavailable.');
     return embed;
 }
 
@@ -314,7 +325,7 @@ function getWeatherEmbedLightning(embed, location, weatherData, lightningData, a
         throw new Error('No weather data available');
     }
 
-    embed.setTitle(`Lightning Activity near ${location.name} ${countryCodeEmoji(location.country)}`);
+    embed.setTitle(`Lightning Activity near ${location.name} ${(/^[A-Z]{2}$/.test(location.country) ? countryCodeEmoji(location.country) : '')}`);
 
     if (lightningData) {
         const strikeCounts = new Array(LIGHTNING_RANGES.length).fill(0);
@@ -379,36 +390,36 @@ function getWeatherEmbedLightning(embed, location, weatherData, lightningData, a
             inline: false,
         });
 
-        const stabilityIndex = getCurrentAirstabilityIndex(airStabilityData) ?? -1;
-        const cape = airStabilityData?.hourly?.cape?.[stabilityIndex] ?? -1;
-
-        let peakCape = -1;
-        let peakCapeTime = 'N/A';
-
-        if (airStabilityData?.hourly?.cape) {
-            for (let i = 0; i < airStabilityData.hourly.cape.length; i++) {
-                const currentCape = airStabilityData.hourly.cape[i];
-                if (Number.isFinite(currentCape) && currentCape > peakCape) {
-                    peakCape = currentCape;
-                    peakCapeTime = `<t:${Math.floor((Date.parse(airStabilityData.hourly.time[i] + 'Z')) / 1000)}:R>`;
-                }
-            }
-        }
-
-        const peakCapeStr = `Peak: ${peakCape >= 0 ? formatNumber(peakCape, 0) : 'N/A'} J/kg (**${getCapeInstabilityLabel(peakCape >= 0 ? peakCape : null)}**) at ${peakCapeTime}`;
-
-        embed.addFields({
-            name: 'Air Stability',
-            value: `**${cape >= 0 ? formatNumber(cape, 0) : 'N/A'} J/kg** - **${getCapeInstabilityLabel(cape >= 0 ? cape : null)}**\n${peakCapeStr}`,
-            inline: false,
-        });
-
         const chartUrl = getWeatherNearbyStrikesChart(lightningData, location);
         embed.setImage(chartUrl);
     }
     else {
-        embed.setDescription('No lightning data available.');
+        embed.setDescription('Lightning data unavailable; strike counts are unknown.');
     }
+
+    const stabilityIndex = getCurrentAirstabilityIndex(airStabilityData) ?? -1;
+    const cape = airStabilityData?.hourly?.cape?.[stabilityIndex] ?? -1;
+
+    let peakCape = -1;
+    let peakCapeTime = 'N/A';
+
+    if (airStabilityData?.hourly?.cape) {
+        for (let i = 0; i < airStabilityData.hourly.cape.length; i++) {
+            const currentCape = airStabilityData.hourly.cape[i];
+            if (Number.isFinite(currentCape) && currentCape > peakCape) {
+                peakCape = currentCape;
+                peakCapeTime = `<t:${Math.floor((Date.parse(airStabilityData.hourly.time[i] + 'Z')) / 1000)}:R>`;
+            }
+        }
+    }
+
+    const peakCapeStr = `Peak: ${peakCape >= 0 ? formatNumber(peakCape, 0) : 'N/A'} J/kg (**${getCapeInstabilityLabel(peakCape >= 0 ? peakCape : null)}**) at ${peakCapeTime}`;
+
+    embed.addFields({
+        name: 'Air Stability',
+        value: !airStabilityData || !Number.isFinite(cape) ? `Current air stability unavailable.\n${peakCapeStr}` : `**${cape >= 0 ? formatNumber(cape, 0) : 'N/A'} J/kg** - **${getCapeInstabilityLabel(cape >= 0 ? cape : null)}**\n${peakCapeStr}`,
+        inline: false,
+    });
 
     return embed;
 }
@@ -435,6 +446,10 @@ function getAirQualityDescription(aqi) {
     default:
         return 'Unknown';
     }
+}
+
+function alertTime(value) {
+    return Number.isFinite(value) ? `<t:${value}:R>` : 'Unavailable';
 }
 
 function getAlertEmoji(tag) {
@@ -599,15 +614,19 @@ function getWeatherNearbyStrikesChart(lightningData, location) {
     return chartUrl;
 }
 
-function getWeatherForecastChart(weatherResponse) {
+function getWeatherForecastChart(forecast) {
     const WEATHER_FORECAST_DAYS_EXTENDED = WEATHER_FORECAST_DAYS * 2;
-    const forecastEntries = weatherResponse.daily.slice(0, WEATHER_FORECAST_DAYS_EXTENDED);
+    const forecastEntries = forecast.daily.filter(day => Number.isFinite(day.dt)).slice(0, WEATHER_FORECAST_DAYS_EXTENDED);
 
     const chartData = {
         type: 'line',
         data: {
             // use MM-DD format
-            labels: forecastEntries.map((entry) => `${new Date((entry.dt + weatherResponse.timezone_offset) * 1000).getUTCMonth() + 1}-${new Date((entry.dt + weatherResponse.timezone_offset) * 1000).getUTCDate()}`),
+            labels: forecastEntries.map(entry => {
+                const offset = Number.isFinite(forecast.timezone_offset) ? forecast.timezone_offset : 0;
+                const date = new Date((entry.dt + offset) * 1000);
+                return `${date.getUTCMonth() + 1}-${date.getUTCDate()}`;
+            }),
             datasets: [
                 // min temp
                 {

@@ -1,7 +1,7 @@
 const API_CACHE = new Map();
 const MAX_CACHE_ENTRIES = 500;
 
-async function fetchWithCache(url, cacheDuration = 300000) {
+async function fetchWithCache(url, cacheDuration = 300000, validate = data => data) {
     const now = Date.now();
     const cached = API_CACHE.get(url);
     if (cached && now - cached.timestamp < cacheDuration) return cached.data;
@@ -12,7 +12,7 @@ async function fetchWithCache(url, cacheDuration = 300000) {
         // Avoid logging URLs: they can contain API keys.
         throw new Error(`API request failed with HTTP ${response.status}`);
     }
-    const data = await response.json();
+    const data = validate(await response.json());
     if (API_CACHE.size >= MAX_CACHE_ENTRIES) API_CACHE.delete(API_CACHE.keys().next().value);
     API_CACHE.set(url, { data, timestamp: Date.now() });
     return data;

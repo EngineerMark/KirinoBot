@@ -9,6 +9,8 @@ const { drawAlerts, drawAlertSymbols } = require('./weather-alerts-image');
 const { drawImageTitle } = require('./weather-image-title');
 const { drawHourly } = require('./weather-hourly-image');
 const { wrapText, measureText, ensureFonts } = require('./weather-image-layout');
+const { drawDaylight } = require('./weather-daylight-image');
+const { daylightSummary } = require('./weather-outlook-data');
 
 // Render the same presentation data as embeds, without fetching remote assets.
 const WIDTH = 720;
@@ -52,6 +54,7 @@ function buildWeatherSvg(embed, mode = 'normal', context = {}) {
     let overflow = title.overflow;
     let y = 76 + title.lines * 38;
     let body = title.svg;
+    if (mode === 'normal') fullText = [plainText(data.title), daylightSummary(context.weather), fullText].join('\n\n');
     if (data.description) {
         const notices = wrap(data.description, 64);
         overflow ||= notices.length > 5;
@@ -95,6 +98,7 @@ function buildWeatherSvg(embed, mode = 'normal', context = {}) {
     }
     const fields = (forecast || airQuality || alerts ? [] : data.fields || []).filter(field => {
         if (mode === 'normal' && field.name === 'Weather Alerts') return false;
+        if (mode === 'normal' && field.name === 'Daylight') return false;
         if (lightningMap && ['Lightning Activity', 'Closest Strike', 'Recent Lightning Activity'].includes(field.name)) return false;
         return true;
     }).map(field => {
@@ -114,6 +118,7 @@ function buildWeatherSvg(embed, mode = 'normal', context = {}) {
             labels: wrap(item.name, pair ? 21 : 49),
             values: wrap(imageValue(item), item.name === 'Wind' && pair ? 19 : columns),
             compass: item.name === 'Wind',
+            daylight: mode === 'normal' && item.name === 'Cloud Coverage',
             ...weatherVisual(item, context, mode),
         }));
         const labels = prepared.flatMap(item => item.labels);
@@ -124,8 +129,8 @@ function buildWeatherSvg(embed, mode = 'normal', context = {}) {
         const lineStep = hourly ? 24 : 26;
         const fontSize = hourly ? 16 : 18;
         const padding = hourly ? 22 : 28;
-        const height = padding + labelCount * lineStep + valueCount * lineStep + (hasBadge ? hourly ? 26 : 36 : 0);
-        if (y + height > MAX_HEIGHT - 24) {
+        const height = Math.max(prepared.some(item => item.daylight) ? 124 : 0, padding + labelCount * lineStep + valueCount * lineStep + (hasBadge ? hourly ? 26 : 36 : 0));
+        if (y + height > MAX_HEIGHT - 16) {
             overflow = true;
             break;
         }
@@ -144,7 +149,15 @@ function buildWeatherSvg(embed, mode = 'normal', context = {}) {
                     ? `<g transform="translate(${x + width - 74} ${y + 6}) scale(0.8)">${drawWindCompass(context.weather?.current?.wind_deg, 0, 0, item.badge?.color)}</g>`
                     : drawWindCompass(context.weather?.current?.wind_deg, x + width - 84, y + 10, item.badge?.color);
             }
-            if (item.badge) {
+            if (item.daylight) {
+                body += drawDaylight(context.weather, x + 18, y + 58, width - 36);
+                if (item.badge) {
+                    const badgeWidth = measureText(item.badge.label, 12, true) + 20;
+                    body += `<rect x="${x + 80}" y="${y + padding + lineStep - 15}" width="${badgeWidth}" height="22" rx="11" fill="#101e32"/>`;
+                    body += textLines([item.badge.label], x + 90, y + padding + lineStep, 12, item.badge.color, 600);
+                }
+            }
+            else if (item.badge) {
                 const badgeY = y + height - (hourly ? 25 : 39);
                 const badgeWidth = Math.min(width - 36, measureText(item.badge.label, 13, true) + 20);
                 body += `<rect x="${x + 18}" y="${badgeY - 15}" width="${badgeWidth}" height="24" rx="12" fill="#101e32"/>`;
@@ -176,7 +189,7 @@ function buildWeatherSvg(embed, mode = 'normal', context = {}) {
 
 let activeRenders = 0;
 async function getWeatherImage(embed, mode, context) {
-    // Bound native memory usage during bursts; the command falls back to embeds.
+    // Bound native memory usage during bursts; navigation preserves the current view on failure.
     if (activeRenders >= 2) throw new Error('Weather image renderer is busy');
     activeRenders++;
     try {

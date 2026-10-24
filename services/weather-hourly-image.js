@@ -1,13 +1,4 @@
-function hourlyTemperatures(weather) {
-    const anchor = Number.isFinite(weather?.current?.dt) ? weather.current.dt : Date.now() / 1000;
-    const start = Math.floor(anchor / 3600) * 3600;
-    const seen = new Set();
-    return (Array.isArray(weather?.hourly) ? weather.hourly : []).filter(hour => {
-        if (!Number.isFinite(hour?.dt) || hour.dt < start || hour.dt > start + 12 * 3600 || seen.has(hour.dt)) return false;
-        seen.add(hour.dt);
-        return true;
-    }).sort((a, b) => a.dt - b.dt).slice(0, 13);
-}
+const { upcomingHours: hourlyTemperatures, nightRanges } = require('./weather-outlook-data');
 
 function drawHourly(weather, top) {
     const hours = hourlyTemperatures(weather);
@@ -26,6 +17,9 @@ function drawHourly(weather, top) {
 <text x="42" y="26" fill="#ffad9b" font-size="16" font-weight="600">Hourly temperature · °C${Number.isFinite(weather.timezone_offset) ? '' : ' · UTC'}</text>
 ${hasChance ? '<rect x="370" y="16" width="10" height="11" rx="2" fill="#8cd9ee" opacity="0.65"/><text x="388" y="26" fill="#8cd9ee" font-size="12">Precip. chance</text>' : ''}
 <text x="650" y="26" text-anchor="end" fill="#ffad9b" font-size="13">${Number(Math.min(...values).toFixed(1))}° – ${Number(Math.max(...values).toFixed(1))}°</text>`;
+    for (const [from, to] of nightRanges(weather, start, end)) {
+        svg += `<rect data-series="night" x="${x(from)}" y="45" width="${x(to) - x(from)}" height="52" fill="#0a1320" opacity="0.55"/>`;
+    }
     for (const value of [minimum, maximum]) {
         svg += `<path d="M76 ${y(value)}H646" stroke="#40506a" stroke-dasharray="3 5"/><text x="65" y="${y(value) + 4}" text-anchor="end" fill="#ffad9b" font-size="12">${value}°</text>`;
     }

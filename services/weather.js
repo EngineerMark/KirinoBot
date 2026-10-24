@@ -1,5 +1,6 @@
 const { locationResponse, weatherResponse, airQualityResponse, stabilityResponse, lightningResponse } = require('./weather-validation');
 const { WeatherEmbedBuilder, truncate } = require('./weather-embed');
+const { daylightSummary, windSummary } = require('./weather-outlook-data');
 const { fetchWithCache } = require('./api');
 const { formatNumber } = require('./helpers');
 const { countryCodeEmoji } = require('country-code-emoji');
@@ -194,6 +195,8 @@ function getWeatherEmbedNormal(embed, location, weatherData, airQualityData, lig
         },
     );
 
+    embed.addFields({ name: 'Daylight', value: daylightSummary(weatherData), inline: true });
+
     if (weatherData.alerts && weatherData.alerts.length > 0) {
         let alertText = '';
         let shown = 0;
@@ -269,11 +272,13 @@ function getWeatherEmbedForecast(embed, location, weatherData) {
         }
     }
 
+    const wind = windSummary(weatherData);
+    if (wind) embed.addFields({ name: 'Wind & Gusts Forecast', value: wind });
     if (weatherData.daily.some(day => Number.isFinite(day.dt))) embed.setImage(getWeatherForecastChart(weatherData));
     const notices = [];
     if (weatherData.daily.some(day => !Number.isFinite(day.dt))) notices.push('Incomplete forecast: invalid forecast dates omitted.');
     if (!Number.isFinite(weatherData.timezone_offset)) notices.push('Local timezone unavailable; forecast dates shown in UTC.');
-    if (weatherData.daily.length < 2) notices.push('Forecast data unavailable.');
+    if (weatherData.daily.length < 2) notices.push(wind ? 'Daily forecast data unavailable.' : 'Forecast data unavailable.');
     if (notices.length) embed.setDescription(notices.join('\n'));
 
     return embed;

@@ -1,5 +1,6 @@
 const { weatherVisual, drawIcon } = require('./weather-visuals');
 const { temperatureScale } = require('./weather-image-layout');
+const { drawWindForecast } = require('./weather-wind-image');
 
 const HIGH = '#ffad9b';
 const LOW = '#8cd9ee';
@@ -15,12 +16,15 @@ function forecastDays(weather) {
 
 function drawForecast(weather, top, availableHeight) {
     const days = forecastDays(weather);
-    if (!days.length) return null;
-    const chartHeight = 280;
+    const wind = drawWindForecast(weather, 0);
+    if (!days.length) return wind ? { ...wind, svg: `<g transform="translate(0 ${top})">${wind.svg}</g>`, overflow: false } : null;
+    const chartHeight = wind ? Math.max(210, Math.min(238, availableHeight - wind.height - 16 - days.length * 52)) : 280;
+    const plotBottom = chartHeight - 68;
+    const plotHeight = plotBottom - 70;
     const values = days.flatMap(day => [day.temp?.min, day.temp?.max]).filter(Number.isFinite);
     const { minimum: bottom, maximum: ceiling, ticks } = temperatureScale(values);
     const x = index => days.length === 1 ? 364 : 90 + (days[index].dt - days[0].dt) * 540 / (days[days.length - 1].dt - days[0].dt);
-    const y = value => 210 - (value - bottom) / (ceiling - bottom) * 140;
+    const y = value => plotBottom - (value - bottom) / (ceiling - bottom) * plotHeight;
     let svg = `<g transform="translate(0 ${top})"><rect x="24" width="672" height="${chartHeight}" rx="14" fill="#202e46"/>
 <text x="42" y="30" fill="#f0f4fc" font-size="18" font-weight="600">Daily temperature · °C</text>
 <path d="M446 25h22" stroke="${HIGH}" stroke-width="3"/><text x="476" y="30" fill="${HIGH}" font-size="14">High</text>
@@ -52,22 +56,24 @@ function drawForecast(weather, top, availableHeight) {
         svg += `<path data-series="${key}" d="${path}" fill="none" stroke="${color}" stroke-width="3" stroke-linejoin="round"/>`;
     }
     days.forEach((day, index) => {
-        svg += `<text x="${x(index)}" y="238" fill="#f0f4fc" font-size="14" text-anchor="middle">${day.weekday}</text><text x="${x(index)}" y="258" fill="#a9bad1" font-size="12" text-anchor="middle">${day.shortDate}</text>`;
+        svg += `<text x="${x(index)}" y="${plotBottom + 28}" fill="#f0f4fc" font-size="14" text-anchor="middle">${day.weekday}</text><text x="${x(index)}" y="${plotBottom + 48}" fill="#a9bad1" font-size="12" text-anchor="middle">${day.shortDate}</text>`;
     });
     svg += '</g>';
-    const rowHeight = 58;
-    const rows = days.slice(0, Math.max(0, Math.floor((availableHeight - chartHeight - 10) / rowHeight)));
+    if (wind) svg += `<g transform="translate(0 ${top + chartHeight + 8})">${wind.svg}</g>`;
+    const graphsHeight = chartHeight + (wind ? wind.height + 8 : 0);
+    const rowHeight = wind ? 52 : 58;
+    const rows = days.slice(0, Math.max(0, Math.floor((availableHeight - graphsHeight - 8) / rowHeight)));
     rows.forEach((day, index) => {
-        const rowTop = top + chartHeight + 10 + index * rowHeight;
+        const rowTop = top + graphsHeight + 8 + index * rowHeight;
         const icon = weatherVisual({ name: day.date }, { weather }, 'forecast').icon;
         const rain = Number.isFinite(day.pop) && day.pop >= 0 && day.pop <= 1 ? `${Math.round(day.pop * 100)}%` : '—';
-        svg += `<g transform="translate(0 ${rowTop})"><rect x="24" width="672" height="52" rx="14" fill="#202e46"/>
+        svg += `<g transform="translate(0 ${rowTop})"><rect x="24" width="672" height="${rowHeight - 6}" rx="14" fill="#202e46"/>
 ${drawIcon(icon, 42, 15)}<text x="80" y="31" fill="#f0f4fc" font-size="17">${day.weekday} ${day.shortDate}</text>
 <text x="254" y="31" fill="${LOW}" font-size="17">${number(day.temp?.min)}</text><text x="334" y="31" fill="${HIGH}" font-size="17">${number(day.temp?.max)}</text>
 ${drawIcon('drop', 438, 17, LOW, 18)}<text x="466" y="31" fill="#a9bad1" font-size="15">${rain} precip. chance</text></g>`;
     });
-    if (!values.length) svg += `<text x="368" y="${top + 140}" text-anchor="middle" fill="#f9cc83" font-size="18">Temperature data unavailable</text>`;
-    return { svg, height: chartHeight + 10 + rows.length * rowHeight, overflow: rows.length < days.length };
+    if (!values.length) svg += `<text x="368" y="${top + (70 + plotBottom) / 2}" text-anchor="middle" fill="#f9cc83" font-size="18">Temperature data unavailable</text>`;
+    return { svg, height: graphsHeight + 8 + rows.length * rowHeight, overflow: rows.length < days.length };
 }
 
 module.exports = { drawForecast, forecastDays };

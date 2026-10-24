@@ -9,12 +9,13 @@ async function renderSamples(directory) {
     await fs.mkdir(directory, { recursive: true });
     const observedAt = Date.now();
     const now = Math.floor(observedAt / 3600000) * 3600;
+    const midnight = Math.floor((now + 3600) / 86400) * 86400 - 3600;
     const location = { name: 'Amsterdam', country: 'NL', lat: 52, lon: 5 };
     const weather = weatherResponse({
-        current: { dt: now, temp: 14, feels_like: 11, humidity: 87, clouds: 78, wind_speed: 14, wind_deg: 220, pressure: 995, visibility: 3000, weather: [{ description: 'Moderate rain' }] },
+        current: { dt: now, sunrise: midnight + 7.5 * 3600, sunset: midnight + 18 * 3600, temp: 14, feels_like: 11, humidity: 87, clouds: 78, wind_speed: 14, wind_deg: 220, pressure: 995, visibility: 3000, weather: [{ description: 'Moderate rain' }] },
         timezone_offset: 3600,
-        hourly: Array.from({ length: 13 }, (_, index) => ({ dt: now + index * 3600, temp: 13 + Math.sin(index / 2) * 5, pop: (index % 5) / 4 })),
-        daily: Array.from({ length: 8 }, (_, index) => ({ dt: now + index * 86400, temp: { min: 8 + index % 3, max: 16 + index % 5 }, pop: (index % 5) / 4, weather: [{ description: index % 2 ? 'Light rain' : 'Scattered clouds' }] })),
+        hourly: Array.from({ length: 13 }, (_, index) => ({ dt: now + index * 3600, temp: 13 + Math.sin(index / 2) * 5, pop: (index % 5) / 4, wind_speed: 5 + Math.sin(index / 3) * 3, wind_gust: 8 + Math.sin(index / 3) * 4, wind_deg: (220 + index * 12) % 360 })),
+        daily: Array.from({ length: 8 }, (_, index) => ({ dt: now + index * 86400, sunrise: midnight + index * 86400 + 7.5 * 3600, sunset: midnight + index * 86400 + 18 * 3600, temp: { min: 8 + index % 3, max: 16 + index % 5 }, pop: (index % 5) / 4, weather: [{ description: index % 2 ? 'Light rain' : 'Scattered clouds' }] })),
         alerts: [{ event: 'Orange warning of strong winds', sender_name: 'National weather service', start: now - 3600, end: now + 7200, description: 'Strong gusts expected along the coast. Travel disruption is possible. Follow the issuing agency for details.', tags: ['wind'] }, { event: 'Flood Watch', sender_name: 'Regional weather authority', start: now + 3600, end: now + 86400, description: 'Heavy rainfall may cause rivers to rise. Monitor official updates.', tags: ['flood'] }],
     });
     const airQuality = { list: [{ main: { aqi: 4 }, components: { pm2_5: 55, pm10: 110, no2: 45, o3: 110, so2: 12, co: 420, no: 2.3, nh3: 3.1 } }] };

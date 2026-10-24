@@ -23,6 +23,7 @@ function conditions(data) {
 function weatherResponse(data) {
     if (!object(data) || !object(data.current)) throw new Error('Invalid weather response: current conditions unavailable');
     const current = { dt: timestamp(data.current.dt) ? data.current.dt : NaN, weather: conditions(data.current.weather) };
+    for (const key of ['sunrise', 'sunset']) current[key] = timestamp(data.current[key]) ? data.current[key] : NaN;
     for (const key of ['temp', 'feels_like', 'humidity', 'clouds', 'wind_speed', 'wind_deg', 'pressure', 'visibility']) current[key] = finite(data.current[key]);
     for (const key of ['humidity', 'clouds']) {
         if (current[key] < 0 || current[key] > 100) current[key] = NaN;
@@ -33,6 +34,7 @@ function weatherResponse(data) {
     if (current.wind_deg < 0 || current.wind_deg > 360) current.wind_deg = NaN;
     const daily = Array.isArray(data.daily) ? data.daily.map(day => ({
         dt: timestamp(day?.dt) ? day.dt : NaN, temp: { min: finite(day?.temp?.min), max: finite(day?.temp?.max) },
+        sunrise: timestamp(day?.sunrise) ? day.sunrise : NaN, sunset: timestamp(day?.sunset) ? day.sunset : NaN,
         pop: Number.isFinite(day?.pop) && day.pop >= 0 && day.pop <= 1 ? day.pop : NaN, weather: conditions(day?.weather),
     })) : [];
     const alerts = data.alerts === undefined ? [] : Array.isArray(data.alerts) ? data.alerts.filter(object).map(alert => ({
@@ -45,6 +47,9 @@ function weatherResponse(data) {
         hourly: Array.isArray(data.hourly) ? data.hourly.slice(0, 168).map(hour => ({
             dt: timestamp(hour?.dt) ? hour.dt : NaN, temp: finite(hour?.temp),
             pop: Number.isFinite(hour?.pop) && hour.pop >= 0 && hour.pop <= 1 ? hour.pop : NaN,
+            wind_speed: Number.isFinite(hour?.wind_speed) && hour.wind_speed >= 0 ? hour.wind_speed : NaN,
+            wind_gust: Number.isFinite(hour?.wind_gust) && hour.wind_gust >= 0 ? hour.wind_gust : NaN,
+            wind_deg: Number.isFinite(hour?.wind_deg) && hour.wind_deg >= 0 && hour.wind_deg <= 360 ? hour.wind_deg : NaN,
         })) : [],
         invalidAlerts: (Number.isInteger(data.invalidAlerts) && data.invalidAlerts >= 0 ? data.invalidAlerts : 0) || (Array.isArray(data.alerts) ? data.alerts.filter(alert => !object(alert)).length : 0),
         timezone_offset: Number.isFinite(data.timezone_offset) && Math.abs(data.timezone_offset) <= 86400 ? data.timezone_offset : NaN,

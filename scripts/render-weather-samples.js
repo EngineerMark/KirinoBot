@@ -7,7 +7,8 @@ const { getWeatherImage } = require('../services/weather-image');
 
 async function renderSamples(directory) {
     await fs.mkdir(directory, { recursive: true });
-    const now = Math.floor(Date.now() / 3600000) * 3600;
+    const observedAt = Date.now();
+    const now = Math.floor(observedAt / 3600000) * 3600;
     const location = { name: 'Amsterdam', country: 'NL', lat: 52, lon: 5 };
     const weather = weatherResponse({
         current: { dt: now, temp: 14, feels_like: 11, humidity: 87, clouds: 78, wind_speed: 14, wind_deg: 220, pressure: 995, visibility: 3000, weather: [{ description: 'Moderate rain' }] },
@@ -17,7 +18,11 @@ async function renderSamples(directory) {
         alerts: [{ event: 'Orange warning of strong winds', sender_name: 'National weather service', start: now - 3600, end: now + 7200, description: 'Strong gusts expected along the coast. Travel disruption is possible. Follow the issuing agency for details.', tags: ['wind'] }, { event: 'Flood Watch', sender_name: 'Regional weather authority', start: now + 3600, end: now + 86400, description: 'Heavy rainfall may cause rivers to rise. Monitor official updates.', tags: ['flood'] }],
     });
     const airQuality = { list: [{ main: { aqi: 4 }, components: { pm2_5: 55, pm10: 110, no2: 45, o3: 110, so2: 12, co: 420, no: 2.3, nh3: 3.1 } }] };
-    const lightning = { strikes: Array.from({ length: 90 }, (_, index) => ({ time: new Date(now * 1000 - index * 60000), coord: { lat: 52 + index % 5 * 0.03, lon: 5 + index % 9 * 0.05 } })) };
+    const lightning = { strikes: Array.from({ length: 90 }, (_, index) => {
+        const angle = index * 2.4;
+        const spread = 0.1 + index % 8 * 0.08;
+        return { time: new Date(observedAt - index * 60000), coord: { lat: 52 + Math.cos(angle) * spread, lon: 5 + Math.sin(angle) * spread / Math.cos(52 * Math.PI / 180) } };
+    }) };
     const airStability = { hourly: { time: [new Date(now * 1000).toISOString().slice(0, 16)], cape: [1800] } };
     const samples = ['normal', 'forecast', 'alerts', 'airquality', 'lightning'].map(mode => ({ name: mode, mode }));
     samples.push(

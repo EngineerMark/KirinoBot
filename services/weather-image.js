@@ -3,6 +3,7 @@ const { AttachmentBuilder } = require('discord.js');
 const { weatherVisual, drawIcon, drawWindCompass } = require('./weather-visuals');
 const { drawForecast } = require('./weather-forecast-image');
 const { drawLightning } = require('./weather-lightning-image');
+const { drawLightningMap } = require('./weather-lightning-map');
 const { drawAirQuality } = require('./weather-airquality-image');
 const { drawAlerts, drawAlertSymbols } = require('./weather-alerts-image');
 const { drawImageTitle } = require('./weather-image-title');
@@ -69,6 +70,12 @@ function buildWeatherSvg(embed, mode = 'normal', context = {}) {
         y += forecast.height;
         overflow ||= forecast.overflow;
     }
+    const lightningMap = mode === 'lightning' ? drawLightningMap(context.lightning, context.location, y) : null;
+    if (lightningMap) {
+        body += lightningMap.svg;
+        y += lightningMap.height;
+        fullText = [plainText(data.title), lightningMap.summary, fullText].join('\n\n');
+    }
     const lightning = mode === 'lightning' ? drawLightning(context.lightning, context.location, y) : null;
     if (lightning) {
         body += lightning.svg;
@@ -86,7 +93,11 @@ function buildWeatherSvg(embed, mode = 'normal', context = {}) {
         y += alerts.height;
         fullText = [plainText(data.title), alerts.summary, fullText].join('\n\n');
     }
-    const fields = (forecast || airQuality || alerts ? [] : data.fields || []).filter(field => mode !== 'normal' || field.name !== 'Weather Alerts').map(field => {
+    const fields = (forecast || airQuality || alerts ? [] : data.fields || []).filter(field => {
+        if (mode === 'normal' && field.name === 'Weather Alerts') return false;
+        if (lightningMap && ['Lightning Activity', 'Closest Strike', 'Recent Lightning Activity'].includes(field.name)) return false;
+        return true;
+    }).map(field => {
         if (mode === 'normal' && field.name === 'Wind') return { ...field, inline: true };
         if (mode === 'lightning' && field.name === 'Lightning Activity') return { ...field, value: field.value.replace(/\n/g, ' · ') };
         if (mode === 'lightning' && field.name === 'Recent Lightning Activity') return { ...field, value: field.value.replace(/In the last /g, '').replace(/ minutes:/g, ' min:').replace(/ strikes per minute/g, '/min').replace(/\n/g, ' · ') };
